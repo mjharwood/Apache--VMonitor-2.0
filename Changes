@@ -2,9 +2,15 @@
 
 =over 
 
-=item 2.03 - 
+=item 2.03 - Fri Mar 11 18:37:08 EST 2005
 
+use %Apache::VMonitor::longflags long status lookup table, using the
+values returned by status() in the string context. So we always give
+the right value (previously we were looking up by a hardcoded index,
+which might have been incorrect if new entries were added in the
+scoreboard, but not at the end).
 
+support new scoreboard status flags added in Apache 2.0
 
 =item 2.02 - Fri Jan 21 17:07:53 EST 2005
 

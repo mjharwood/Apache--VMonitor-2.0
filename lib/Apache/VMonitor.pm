@@ -57,17 +57,18 @@ my $gtop = GTop->new;
 
 my $tt;
 
-@Apache::VMonitor::longflags = (
-    "Open slot with no current process",
-    "Starting up",
-    "Waiting for Connection",
-    "Reading Request",
-    "Sending Reply",
-    "KeepAlive (read)",
-    "Logging",
-    "DNS Lookup",
-    "Gracefully finishing",
-    "None",
+%Apache::VMonitor::longflags = (
+  "_" => "Waiting for Connection",
+  "S" => "Starting up",
+  "R" => "Reading Request",
+  "W" => "Sending Reply",
+  "K" => "Keepalive (read)",
+  "D" => "DNS Lookup",
+  "C" => "Closing connection",
+  "L" => "Logging",
+  "G" => "Gracefully finishing",
+  "I" => "Idle cleanup of worker",
+  "." => "Open slot with no current process",
 );
 
 ########################
@@ -777,16 +778,16 @@ sub score2record {
     my($self, $worker_score) = @_;
 
     # get absolute start and stop times in usecs since epoch
-    my ($start_sec, $start_usec_delta) = $worker_score->start_time;
-    my $start_usec = $start_sec * 1000000 + $start_usec_delta;
+    my ($start_sec, $start_usec) = $worker_score->start_time;
+    my $start_usec = $start_sec * 1000000 + $start_usec;
 
-    my($stop_sec, $stop_usec_delta) = $worker_score->stop_time;
-    my $stop_usec = $stop_sec * 1000000 + $stop_usec_delta;
-    #warn "time: $start_sec, $start_usec_delta, $stop_sec, $stop_usec_delta\n";
+    my($stop_sec, $stop_usec) = $worker_score->stop_time;
+    my $stop_usec = $stop_sec * 1000000 + $stop_usec;
+    warn "time: $start_sec, $start_usec, $stop_sec, $stop_usec\n";
 
     # measure running time till now if not idle
     my $elapsed = $stop_usec < $start_usec
-        ? Time::HiRes::tv_interval([$start_sec, $start_usec_delta],
+        ? Time::HiRes::tv_interval([$start_sec, $start_usec],
                                    [Time::HiRes::gettimeofday()])
         : 0;
 
@@ -1107,7 +1108,7 @@ sub data_apache_single {
         $data->{rec} = {
             is_httpd_proc => 1,
             proc_type => ($pid == getppid ? "Parent" : "Child"),
-            mode_long => $Apache::VMonitor::longflags[$rec->{mode}],
+            mode_long => $Apache::VMonitor::longflags{$rec->{mode}},
             elapsed   => $rec->{elapsed},
             felapsed  => format_time($rec->{elapsed}),
             lastreq   => $lastreq,
@@ -1632,8 +1633,10 @@ The <B>modes</B> a process can be in:
 <code><b>W</b></code> = Sending Reply<BR>
 <code><b>K</b></code> = Keepalive (read)<BR>
 <code><b>D</b></code> = DNS Lookup<BR>
+<code><b>C</b></code> = Closing connection<BR>
 <code><b>L</b></code> = Logging<BR>
 <code><b>G</b></code> = Gracefully finishing<BR>
+<code><b>I</b></code> = Idle cleanup of worker<BR>
 <code><b>.</b></code> = Open slot with no current process<BR>
 
    },
