@@ -1,6 +1,6 @@
 package Apache::VMonitor;
 
-$Apache::VMonitor::VERSION = '1.0';
+$Apache::VMonitor::VERSION = '2.0';
 
 use strict;
 #use warnings; # XXX: 5.005
