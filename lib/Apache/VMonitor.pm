@@ -31,11 +31,8 @@ BEGIN {
 }
 
 # once 2.0 is released drop the Apache::MPM_IS_THREADED case
-use constant APACHE_IS_THREADED => MP2 &&
-    ($mod_perl::VERSION < 1.9912
-     ? Apache::MPM_IS_THREADED()
-     : require Apache::MPM && Apache::MPM->is_threaded()
-    );
+use constant APACHE_IS_THREADED => MP2 && 
+    require Apache::MPM && Apache::MPM->is_threaded();
 
 # Apache::Scoreboard for 1.3 scoreboard has the vhost accessor only
 # starting from version 0.12
