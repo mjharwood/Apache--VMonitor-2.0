@@ -1,3 +1,6 @@
+- once 1.99_13 is released, release a new version after syncing the API 
+(Apache::exists_config_define) and require mp1.99_13
+
 - Need better tests
 
 - seems like GTop can't show more than one CPU on SMP machines, or may

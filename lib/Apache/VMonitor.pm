@@ -2,9 +2,10 @@ package Apache::VMonitor;
 
 $Apache::VMonitor::VERSION = '2.0';
 
+require 5.006;
+
 use strict;
-#use warnings; # XXX: 5.005
-#no warnings 'redefine'; # XXX
+use warnings;
 
 use Template ();
 use GTop ();
@@ -1177,6 +1178,7 @@ sub data_apache_single {
             };
 
     }
+
     $data->{mem_maps} = {
         records  => \@maps,
         ptr_size => (length(pack("p", 0)) == 8 ? 16 : 8),
@@ -1283,14 +1285,14 @@ sub tmpl_apache_single {
    format_map_header("start", "end", "offset", "maj", "min", "inode", "perm", "filename");
    USE format_map_item = 
        format("  %0${ptr_size}lx-%0${ptr_size}lx %0${ptr_size}lx - %02x:%02x %08lu - %4s - %s\n");
-   FOR rec = mem_maps.records;
+   FOR rec = mem_maps.records.sort('filename');
        format_map_item(rec.start, rec.end, rec.offset, rec.device_major, rec.device_minor, rec.inode, rec.perm, rec.filename);
    END;
 
   # loaded shared libs sizes
   "<hr><b>Loaded Libs Sizes:</b> (in bytes)\n\n";
    USE format_shared_lib = format("%10d (%s): %s\n");
-   FOR rec = libs.records;
+   FOR rec = libs.records.sort('filename');
        format_shared_lib(rec.size, rec.fsize, rec.filename);
    END;
    USE format_shared_lib_total = format("\n<b>%10d (%s): %s</b>\n");
@@ -2152,6 +2154,12 @@ on the server side.
 
 
 =head1 PREREQUISITES
+
+Perl 5.6 or higher is required. If you are stuck with Perl 5.005 use
+the previous generation of this module. 0.8 is the latest version as
+of this writing and it's available from:
+http://www.cpan.org/authors/id/S/ST/STAS/Apache-VMonitor-0.8.tar.gz or
+your favorite CPAN mirror.
 
 You need to have B<Apache::Scoreboard> installed and configured in
 I<httpd.conf>, which in turn requires mod_status to be installed. You

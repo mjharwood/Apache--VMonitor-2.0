@@ -12,7 +12,7 @@ test_configure($mp_gen);
 
 # prerequisites
 my %require_common = (
-   "Apache::Test"       => "1.04",
+   "Apache::Test"       => "1.10", # ipv6 fixes
    "Time::HiRes"        => "1.19",
    "Template"           => "2.0",
 );

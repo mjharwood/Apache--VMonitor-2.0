@@ -1,8 +1,17 @@
 =head1 CHANGES (Apache::VMonitor)
 
-=head1 ver 2.0 - Mon Dec 22 12:57:00 PST 2003
+=head1 2.01
 
-A complete rewrite of the previous generation to use Template Toolkit,
-be subclassable and support mod_perl 1st and 2nd generations.
+- in the single mode view sort 'Memory Maps' and 'Loaded Libs Sizes'
+  by filename
+
+- drop 5.005 support. It's too much of a hassle. version 0.08 is
+  available for those who are stuck with 5.005.
+
+=head1 2.0 - Mon Dec 22 12:57:00 PST 2003
+
+- A complete rewrite of the previous generation to use Template
+  Toolkit, be subclassable and support mod_perl 1st and 2nd
+  generations.
 
 =cut
