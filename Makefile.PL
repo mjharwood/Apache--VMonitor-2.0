@@ -21,7 +21,8 @@ my %require = (
    'Template'           => "2.56",
 );
 
-prereqs();
+# XXX
+#prereqs();
 
 my @scripts = qw(t/TEST);
 
@@ -34,7 +35,7 @@ ModPerl::MM::WriteMakefile(
     VERSION_FROM => 'lib/Apache/VMonitor.pm',
     PREREQ_PM    => \%require,
     dist         => {
-        PREOP => 'pod2text VMonitor.pm > $(DISTVNAME)/README', 
+        PREOP => 'pod2text lib/Apache/VMonitor.pm > $(DISTVNAME)/README', 
     },
     clean        => {
         FILES => "@{ clean_files() }",

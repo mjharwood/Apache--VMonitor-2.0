@@ -1,3 +1,7 @@
 Makefile.PL
 lib/Apache/VMonitor.pm
 MANIFEST
+META.yml                                Module meta-data (added by MakeMaker)
+t/TEST.PL
+t/vmonitor/basic.t
+t/conf/extra.conf.in

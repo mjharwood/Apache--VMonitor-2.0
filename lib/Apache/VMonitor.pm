@@ -84,13 +84,16 @@ sub new {
     return $self;
 }
 
+
 sub generate {
     my $self = shift;
     my $cfg = $self->{cfg};
     my $tt = $self->{tt};
     my @items = 'start_html';
 
-    my @sects = qw(fs_usage mount); # XXX: fixme
+# XXX: fixme
+my @sects = qw(system fs_usage mount);
+
     $cfg->{$_} && push @items, $_ for (@sects);
     push @items, qw(nav_bar end_html);
 
@@ -142,10 +145,24 @@ sub data_start_html {
 }
 
 sub tmpl_start_html {
+
     return \ <<'EOT';
 <html>
 <head>
-<title>Apache::VMonitor</title>
+  <title>Apache::VMonitor</title>
+  <style type="text/css">
+  body {
+    color: #000;
+    background-color: #fff;
+    font-size: 0.8em;
+  }
+  p.hdr {
+    background-color: #ddd;
+    border: 2px outset;
+    padding: 3px;
+    width: 99%;
+  }
+  </style>
 </head>
 <body bgcolor="white">
 &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
@@ -240,6 +257,135 @@ EOT
 
 
 
+### system ###
+
+sub data_system {
+    my $self = shift;
+
+    # uptime and etc...
+    my($min, $hour, $day, $mon, $year) = (localtime)[1..5];
+    my %date = (
+        min   => $min,
+        hour  => $hour,
+        day   => $day,
+        month => $mon + 1,
+        year  => $year + 1900,
+    );
+
+    my $loadavg = $gtop->loadavg;
+
+    my $data = {
+        date    => \%date,
+        uptime  => format_time($gtop->uptime->uptime),
+        loadavg => \@{ $loadavg->loadavg },
+    };
+
+    if ($^O eq 'linux') {
+        $data->{tasks} = [ $loadavg->nr_tasks, $loadavg->nr_running ];
+    }
+
+    # total CPU stats
+    my $cpu   = $gtop->cpu;
+    my $total = $cpu->total;
+    $data->{cpu} = {
+        map { $_ => ( $total ? ($cpu->$_() * 100 / $total) : 0 ) }
+            qw(user nice sys idle)
+    };
+
+    # total mem stats
+    my $mem = $gtop->mem;
+    $data->{mem} = {
+        map { $_ => size_string($mem->$_()) }
+            qw(total used free shared buffer)
+    };
+
+    # total swap stats
+    my $swap       = $gtop->swap();
+    my $swap_total = $swap->total();
+    my $swap_used  = $swap->used();
+    $data->{swap} = {
+        usage => ($swap_total ? ($swap_used * 100 / $swap_total) : 0),
+        used  => $swap_used,
+        map({ ("f$_" => size_string($swap->$_)) }
+            qw(total used free)),
+        map({ ("f$_" => format_counts($swap->$_)) }
+            qw(pagein pageout)),
+    };
+
+    return $data;
+}
+
+
+
+sub tmpl_system {
+
+    return \ <<'EOT';
+<hr>
+<pre>
+[%-
+
+  # date/time/load
+  USE format_date = format("%d/%.2d/%d");
+  fdate = format_date(date.month, date.day, date.year);
+
+  USE format_time = format("%d:%.2d%s");
+  pam = date.hour > 11 ? "pm" : "am";
+  date.hour = date.hour - 12 IF date.hour > 11;
+  ftime = format_time(date.hour, date.min, pam);
+
+  USE format_load = format("%.2f %.2f %.2f");
+  floadavg = format_load(loadavg.0, loadavg.1, loadavg.2,);
+
+  USE format_run_procs = format(", %d processes/threads: %d running");
+  frun_procs = tasks
+      ? format_run_procs(tasks.0, tasks.1)
+      : "";
+
+  USE format_line_time_load =
+      format("<b>%s %s  up %s, load average: %s%s</b>\n");
+  format_line_time_load(fdate, ftime, uptime, floadavg, frun_procs);
+
+
+
+  # CPU
+  USE format_line_cpu =
+      format("<b>CPU:   %2.1f%% user, %2.1f%% nice, %2.1f%% sys, %2.1f%% idle</b>\n");
+  format_line_cpu(cpu.user, cpu.nice, cpu.sys, cpu.idle);
+
+
+  # Memory
+  USE format_line_mem =
+      format("<b>Mem:  %5s av, %5s used, %5s free, %5s shared, %5s buff</b>\n");
+  format_line_mem(mem.total, mem.used, mem.free, mem.shared, mem.buffer);
+
+
+  # SWAP
+    # visual alert on swap usage:
+    # 1) 5Mb < swap < 10 MB             color: light red
+    # 2) 20% < swap (swapping is bad!)  color: red
+    # 3) 70% < swap (swap almost used!) color: red + blinking
+
+  format_swap_data = "%5s av, %5s used, %5s free, %5s pagein, %5s pageout";
+  IF 5000 < swap.used AND swap.used < 10000;
+      USE format_line_swap = format("<b>Swap: <font color=\"#ff99cc\">$format_swap_data</font></b>\n");
+  ELSIF swap.usage >= 20;
+      USE format_line_swap = format("<b>Swap: <font color=\"#ff0000\">$format_swap_data</font></b>\n");
+  ELSIF swap.usage >= 70;
+      # swap on fire!
+      USE format_line_swap = format("<b>Swap: <blink><font color=\"#ff0000\">$format_swap_data</font></blink></b>\n");
+  ELSE;
+      USE format_line_swap = format("<b>Swap: $format_swap_data</b>\n");
+  END;
+
+  format_line_swap(swap.ftotal, swap.fused, swap.ffree, swap.fpagein, swap.fpageout);
+
+
+
+-%]
+</pre>
+EOT
+
+}
 
 
 
@@ -400,6 +546,71 @@ sub tmpl_mount {
 EOT
 
 }
+
+
+### helpers ###
+
+# Takes seconds as int or float as an argument 
+#
+# Returns string of time in days (12d) or
+# hours/minutes (11:13) if less then one day, 
+# and secs.millisec (12.234s) if less than a minute
+#
+# The returned sting is always of 6 digits length (taken that
+# length(int days)<4) so you can ensure the column with 
+# printf "%7s", format_time($secs)
+###############
+sub format_time {
+  my $secs = shift || 0;
+  return sprintf "%6.3fs", $secs if $secs < 60;
+  my $hours = $secs / 3600;
+  return sprintf "%6.2fd", $hours / 24 if $hours > 24;
+  return sprintf " %02d:%2.2dm", int $hours,
+      int $secs%3600 ?  int (($secs%3600)/60) : 0;
+}
+
+
+
+sub size_string {
+    my($size) = @_;
+
+    if (!$size) {
+        $size = "   0k";
+    }
+    elsif ($size == -1) {
+        $size = "    -";
+    }
+    elsif ($size < 1024) {
+        $size = "   1k";
+    }
+    elsif ($size < 1048576) {
+        $size = sprintf "%4dk", ($size + 512) / 1024;
+    }
+    elsif ($size < 103809024) {
+        $size = sprintf "%4.1fM", $size / 1048576.0;
+    }
+    else {
+        $size = sprintf "%4dM", ($size + 524288) / 1048576;
+    }
+
+    return $size;
+}
+
+# any number that enters we return its compacted version of max 4
+# chars in length (5, 123, 1.2M, 12M, 157G)
+# note that here 1K is 1000 and not 1024!!!
+############
+sub format_counts {
+  local $_ = shift || 0;
+
+  my $digits = tr/0-9//;
+  return $_                                                          if $digits < 4;
+  return sprintf "%.@{[$digits%3 == 1 ? 1 : 0]}fK", $_/1000          if $digits < 7;
+  return sprintf "%.@{[$digits%3 == 1 ? 1 : 0]}fM", $_/1000000       if $digits < 10;
+  return sprintf "%.@{[$digits%3 == 1 ? 1 : 0]}fG", $_/1000000000    if $digits < 13;
+  return sprintf "%.@{[$digits%3 == 1 ? 1 : 0]}fT", $_/1000000000000 if $digits < 16;
+
+} # end of sub format_counts
 
 1;
 __END__
