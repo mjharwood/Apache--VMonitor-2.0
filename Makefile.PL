@@ -40,9 +40,6 @@ my %common_opts = (
     NAME         => 'Apache::VMonitor',
     VERSION_FROM => 'lib/Apache/VMonitor.pm',
     PREREQ_PM    => \%require,
-    dist         => {
-        PREOP => 'pod2text lib/Apache/VMonitor.pm > $(DISTVNAME)/README',
-    },
     clean        => {
         FILES => "@{ clean_files() }",
     }

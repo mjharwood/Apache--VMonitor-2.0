@@ -101,7 +101,9 @@ sub run {
     $class = ref($class)||$class;
     #$tt = Template->new({});
 
-    my %params = map { split('=', $_, 2) } split /[&]/, $r->args;
+    my %params = MP2 
+        ? map({ split('=', $_, 2) } split /[&]/, $r->args)
+        : $r->args;
     # modify the default args if requested
     for (keys %Apache::VMonitor::Config) {
         $cfg{$_} = exists $params{$_}
@@ -183,7 +185,15 @@ sub generate {
         my $tmpl_block = "tmpl_$item";
         my $data_sub = $self->can("data_$item");
         my $data = $data_sub ? $self->$data_sub : {};
-        $tt->process($tmpl_block, $data) or warn $tt->error();
+        if (MP2 || $] >= 5.008) {
+            $tt->process($tmpl_block, $data) or warn $tt->error();
+        }
+        else {
+            # mp1 && perl < 5.008 can't handle the above
+            my $x;
+            $tt->process($tmpl_block, $data, \$x) or warn $tt->error();
+            print $x;
+        }
     }
 }
 
