@@ -779,14 +779,14 @@ sub score2record {
 
     # get absolute start and stop times in usecs since epoch
     my ($start_sec, $start_usec) = $worker_score->start_time;
-    my $start_usec = $start_sec * 1000000 + $start_usec;
+    my $start = $start_sec * 1000000 + $start_usec;
 
     my($stop_sec, $stop_usec) = $worker_score->stop_time;
-    my $stop_usec = $stop_sec * 1000000 + $stop_usec;
-    warn "time: $start_sec, $start_usec, $stop_sec, $stop_usec\n";
+    my $stop = $stop_sec * 1000000 + $stop_usec;
+    #warn "time: $start_sec, $start_usec, $stop_sec, $stop_usec\n";
 
     # measure running time till now if not idle
-    my $elapsed = $stop_usec < $start_usec
+    my $elapsed = $stop < $start
         ? Time::HiRes::tv_interval([$start_sec, $start_usec],
                                    [Time::HiRes::gettimeofday()])
         : 0;
