@@ -1,0 +1,8 @@
+=head1 CHANGES (Apache::VMonitor)
+
+=head1 ver 2.0 - 
+
+A complete rewrite of the previous generation to use Template Toolkit,
+be subclassable and support mod_perl 1st and 2nd generations.
+
+=cut

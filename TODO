@@ -1,0 +1,4 @@
+- Need better tests
+
+- seems like GTop can't show more than one CPU on SMP machines, or may
+  be it does but I don't know how.
