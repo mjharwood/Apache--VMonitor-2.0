@@ -117,9 +117,11 @@ sub generate {
     }
     else {
         # XXX: fixme
-        my @sects = qw(system apache fs_usage mount);
+        my @sects = qw(system apache procs fs_usage mount);
         $cfg->{$_} && push @items, $_ for (@sects);
-        push @items, qw(nav_bar verbose);
+        push @items, qw(nav_bar);
+        $cfg->{$_} && push @items, $_ for (qw(verbose));
+
     }
 
     push @items, qw(end_html);
@@ -537,7 +539,7 @@ sub data_apache {
 
     # handle the parent case
     my $ppid = getppid();
-warn "ppid: $ppid\n";
+#warn "ppid: $ppid\n";
     my $pmem = $self->pid2mem($ppid, \%mem_total);
     my $prec = {
         count     => 0,
@@ -757,6 +759,117 @@ EOT
 
 }
 
+### procs ###
+
+sub data_procs {
+    my $self = shift;
+
+    # XXX:
+    $Apache::VMonitor::PROC_REGEX = join "\|", qw(httpd wine xemacs);
+
+    unless ($Apache::VMonitor::PROC_REGEX) {
+        warn "Don't know what processes to display..." .
+            'int: set $Apache::VMonitor::PROC_REGEX' .
+            'e.g. \$Apache::VMonitor::PROC_REGEX = join "\|", qw(httpd mysql);';
+        return {};
+    }
+
+    my $gtop = $self->{gtop};
+    my($proclist, $entries) = $gtop->proclist;
+
+    my %procs = ();
+    for my $pid ( @$entries ){
+        my $cmd = $gtop->proc_state($pid)->cmd;
+        push @{ $procs{$cmd} }, $pid
+            if $cmd =~ /$Apache::VMonitor::PROC_REGEX/o;
+    }
+
+    # finding out various max lenthgs for a proper column formatting
+    # set the minimum width here
+    my %max_len = (
+        pid => 3,
+        cmd => 3,
+        tty => 3,
+        uid => 3,
+    );
+    my @recs = ();
+    my $cat_id = 0;
+    for my $cat (sort keys %procs) {
+
+        my $cnt = 0;
+        $cat_id++;
+        for my $pid ( @{ $procs{$cat} } ) {
+            $cnt++;
+            my $state = $gtop->proc_state($pid);
+            my $uid   = $gtop->proc_uid($pid);
+            my $mem   = $gtop->proc_mem($pid);
+            my $tty   = $uid->tty;
+            $tty = ' ' if $tty == -1;
+
+            push @recs, {
+                cat_id    => $cat_id,
+                count     => $cnt,
+                pid       => $pid,
+                pid_link  => fixup_url($self->{url}, pid => $pid),
+                uid       => scalar(getpwuid($state->uid)),
+                fsize     => size_string($mem->size($pid)),
+                fshare    => size_string($mem->share($pid)),
+                fvsize    => size_string($mem->vsize($pid)),
+                frss      => size_string($mem->rss($pid)),
+                tty       => $tty,
+                state     => $state->state,
+                cmd       => $state->cmd,
+           };
+
+            my $len       = length $pid;
+            $max_len{pid} = $len if $len > $max_len{pid};
+            $len          = length $state->cmd;
+            $max_len{cmd} = $len if $len > $max_len{cmd};
+            $len          = length $uid->tty;
+            $max_len{tty} = $len if $len > $max_len{tty};
+            $len          = length scalar getpwuid $state->uid;
+            $max_len{uid} = $len if $len > $max_len{uid};
+        }
+    }
+
+    return {
+        max_len => \%max_len,
+        records => \@recs,
+    };
+
+
+}
+
+sub tmpl_procs {
+
+    return \ <<'EOT';
+<hr>
+<pre>
+[%-
+
+  USE format_procs =
+      format("%4s %${max_len.pid}s %-${max_len.uid}s %5s %5s %5s %5s %${max_len.tty}s  %-2s  %-${max_len.cmd}s");
+  "<b>";
+  format_procs('##', "PID", "UID", "Size", "Share", "VSize", "Rss", "TTY", "St", "Command");
+  "</b>\n";
+
+  space = "&nbsp;";
+  FOR rec = records;
+      times = max_len.pid - rec.pid.length;
+      spacing = times > 0 ? space.repeat(times) : "";
+      pid_link = "$spacing<a href=\"${rec.pid_link}\">${rec.pid}</a>";
+
+      item_class = rec.cat_id % 2 ? "item_even" : "item_odd";
+      "<span class=\"$item_class\">";
+      format_procs(rec.count, pid_link, rec.uid, rec.fsize, rec.fshare, rec.fvsize, rec.frss, rec.tty, rec.state, rec.cmd);
+      "</span>\n";
+  END;
+
+-%]
+</pre>
+EOT
+
+}
 
 ### apache_single ###
 
@@ -921,7 +1034,7 @@ sub pid2parent_score {
     if (MP2) {
         my $image = Apache::Scoreboard->image($self->{r}->pool);
         my $parent_idx = $image->parent_idx_by_pid($pid);
-        return $image->parent_score($parent_idx);
+        return $parent_idx == -1 ? undef : $image->parent_score($parent_idx);
     }
     else {
         # XXX: mp1 untested
@@ -1230,6 +1343,194 @@ sub tmpl_mount {
   END;
 -%]
 </pre>
+EOT
+
+}
+
+### verbose ###
+
+%Apache::VMonitor::abbreviations = 
+  (
+
+   verbose =>
+   qq{
+     <B>Verbose option</B>
+
+     Enables Verbose mode - displays an explanation and abbreviation
+     table for each enabled section.
+
+   },
+
+   refresh  =>
+   qq{
+     <B>Refresh Section</B>
+
+       You can tune the automatic refresh rate by clicking on the
+       number of desired rate (in seconds). 0 (zero) means "no
+       automatic refresh".
+   },
+
+
+   system =>
+   qq{
+     <B>Top section</B>
+
+       Represents the emulation of top utility, while individually
+       reporting only on httpd processes, and provides information
+       specific to these processes.
+
+       <B>1st</B>: current date/time, uptime, load average: last 1, 5 and 15
+       minutes, total number of processes and how many are in the
+       running state.
+
+       <B>2nd</B>: CPU utilization in percents: by processes in user, nice,
+       sys and idle state
+
+       <B>3rd</B>: RAM utilization: total available, total used, free, shared
+       and buffered
+
+       <B>4th</B>: SWAP utilization: total available, total used, free, how
+       many paged in and out
+     },
+
+   apache =>
+   qq{
+       <B>Apache/mod_perl processes:</B>
+
+       The first row reports the status of parent process (mnemonic 'par').
+
+       Columns:
+         <pre>
+         <span class="item_even">Column  Purpose</span>
+	 <b>PID</b>     Id
+	 <b>M</b>       Apache mode (See below a full table of abbreviations)
+	 <b>Elapsed</b> Time since request was started if still in process (0 otherwise)
+	 <b>LastReq</b> Time last request was served if idle now (0 otherwise)
+	 <b>Srvd</b>    How many requests were processed by this child
+	 <b>Size</b>    Total Size
+	 <b>Share</b>   Shared Size
+	 <b>VSize</b>   Virtual Size
+	 <b>RSS</b>     Resident Size
+	 <b>Client</b>  Client IP
+	 <b>Request</b> Request (first 64 chars)
+         </pre>
+
+        <p> You can sort the report by clicking on any column (only
+        the parent process is outstanding and is not sorted)</p>
+
+	 Last row reports:
+
+	 <B>Total</B> = a total size of the httpd processes (by
+	 summing the SIZE value of each process)
+
+         <B>Approximate real size (-shared)</B> = 
+
+1. For each process sum up the difference between shared and system
+memory.
+
+2. Now if we add the share size of the process with maximum
+shared memory, we will get all the memory that actually is being
+used by all httpd processes but the parent process.
+
+Please note that this might be incorrect for your system, so you use
+this number on your own risk. I have verified this number, by writing
+it down and then killing all the servers. The system memory went down
+by approximately this number. Again, use this number wisely!
+
+The <B>modes</B> a process can be in:
+
+<code><b>_</b></code> = Waiting for Connection<BR>
+<code><b>S</b></code> = Starting up<BR>
+<code><b>R</b></code> = Reading Request<BR>
+<code><b>W</b></code> = Sending Reply<BR>
+<code><b>K</b></code> = Keepalive (read)<BR>
+<code><b>D</b></code> = DNS Lookup<BR>
+<code><b>L</b></code> = Logging<BR>
+<code><b>G</b></code> = Gracefully finishing<BR>
+<code><b>.</b></code> = Open slot with no current process<BR>
+
+   },
+
+   procs    =>
+   qq{
+     <B>  Processes matched by <CODE>\$Apache::VMonitor::PROC_REGEX</CODE> (PROCS)</B>
+
+Setting:
+<PRE>\$Apache::VMonitor::PROC_REGEX = join "\|", qw(httpd mysql squid);</PRE> 
+
+will display the processes that match /httpd|mysql|squid/ regex in a
+top(1) fashion in groups of processes. After each group the report of
+total size and approximate real size is reported (approximate == size
+calculated with shared memory reducing)
+
+At the end there is a report of total size and approximate real size.
+
+   },
+
+   mount    =>
+   qq{
+<B>Mount section</B>
+
+Reports about all mounted filesystems
+
+<B>DEVICE</B>  = The name of the device<BR>
+<B>MOUNTED ON</B>  = Mount point of the mounted filesystem<BR>
+<B>FS TYPE</B> = The type of the mounted filesystem<BR>
+
+   },
+
+   fs_usage =>
+   qq{
+<B>File System usage</B>
+
+Reports the utilization of all mounted filesystems:
+
+<B>FS</B>  = the mount point of filesystem<BR>
+
+<B>Blocks (1k)</B> = Space usage in blocks of 1k bytes<BR>
+
+<B>Total</B>  = Total existing<BR>
+<B>SU Avail</B> = Available to superuser (root) (tells how much space let for real)<BR>
+<B>User Avail</B> = Available to user (non-root) (user cannot use last 5% of each filesystem)
+
+<B>Usage</B> = utilization in percents (from user perspective, when it reaches
+100%, there are still 5% but only for root processes)
+
+<B>Files</B>: = File nodes usage<BR>
+<B>Total</B>   = Total nodes possible <BR>
+<B>Avail</B> = Free nodes<BR>
+<B>Usage</B> = utilization in percents<BR>
+
+   },
+
+);
+
+sub data_verbose {
+    my $self = shift;
+
+    return {
+        abbr => \%Apache::VMonitor::abbreviations,
+        cfg  => \%cfg,
+    };
+
+}
+
+sub tmpl_verbose {
+
+    return \ <<'EOT';
+[%-
+
+  FOR item = cfg.keys.sort;
+      NEXT UNLESS abbr.$item;
+      NEXT UNLESS cfg.$item OR $item == "refresh";
+      note = abbr.$item;
+      note = note.replace('^',"<p>");
+      note = note.replace("\n\n","</p>\n");
+      note = note.replace('$',"<hr>");
+      note;
+  END;
+
+-%]
 EOT
 
 }
