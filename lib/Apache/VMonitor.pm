@@ -845,16 +845,29 @@ sub data_apache_single {
             };
 
     }
-#    my %len = ();
-#    for my $item (@maps) {
-#        for (keys %item) {
-#            $len
-#        }
-#        $len
-#    }
     $data->{mem_maps} = {
         records  => \@maps,
         ptr_size => (length(pack("p", 0)) == 8 ? 16 : 8),
+    };
+
+    # loaded shared libs sizes
+    my %libsizes = map { $_  => -s $_ } grep { -e $_} grep !/^-$/, keys %libpaths;
+
+    my @lib_sizes = ();
+    my $total = 0;
+    for (sort { $libsizes{$b} <=> $libsizes{$a} } keys %libsizes) {
+        $total +=  $libsizes{$_};
+        push @lib_sizes, {
+            size     => $libsizes{$_},
+            fsize    => size_string($libsizes{$_}),
+            filename => $_,
+        };
+    }
+
+    $data->{libs} = {
+        records  => \@lib_sizes,
+        total    => $total,
+        ftotal   => size_string($total),
     };
 
     return $data;
@@ -907,7 +920,7 @@ sub tmpl_apache_single {
 <pre>
 [%-
 
-   PROCESS single_httpd_process IF rec.is_httpd_proc;
+  # PROCESS single_httpd_process IF rec.is_httpd_proc;
 
   "<hr><b>General process info:</b>\n";
 
@@ -937,6 +950,15 @@ sub tmpl_apache_single {
    FOR rec = mem_maps.records;
        format_map_item(rec.start, rec.end, rec.offset, rec.device_major, rec.device_minor, rec.inode, rec.perm, rec.filename);
    END;
+
+  # loaded shared libs sizes
+  "<hr><b>Loaded Libs Sizes:</b> (in bytes)\n\n";
+   USE format_shared_lib = format("%10d (%s): %s\n");
+   FOR rec = libs.records;
+       format_shared_lib(rec.size, rec.fsize, rec.filename);
+   END;
+   USE format_shared_lib_total = format("\n<b>%10d (%s): %s</b>\n");
+   format_shared_lib_total(libs.total, libs.ftotal, "Total");
 
 -%]
 </pre>
