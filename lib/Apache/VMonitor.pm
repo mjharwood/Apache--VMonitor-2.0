@@ -48,7 +48,7 @@ use constant SERVER_LIMIT => MP2
 #    : 0; # no threads in mp1
 
 use constant SINGLE_PROCESS_MODE => MP2
-    ? Apache::exists_config_define('ONE_PROCESS')
+    ? Apache::ServerUtil::exists_config_define('ONE_PROCESS')
     : Apache->define('X');
 
 my $gtop = GTop->new;

@@ -1,5 +1,5 @@
-- once 1.99_13 is released, release a new version after syncing the API 
-(Apache::exists_config_define) and require mp1.99_13
+- once 1.99_15 is released, release a new version after syncing the API 
+(Apache::exists_config_define) and require mp1.99_15
 
 - Need better tests
 

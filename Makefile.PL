@@ -12,7 +12,7 @@ test_configure($mp_gen);
 
 # prerequisites
 my %require_common = (
-   "Apache::Test"       => "1.10", # ipv6 fixes
+   "Apache::Test"       => "1.15", # config fixes
    "Time::HiRes"        => "1.19",
    "Template"           => "2.0",
 );
@@ -25,7 +25,7 @@ my %require_mp1 =  (
 
 my %require_mp2 =  (
    "GTop"               => "0.12",
-   "mod_perl"           => "1.9912",
+   "mod_perl"           => "1.9915",
    "Apache::Scoreboard" => "2.0",
 );
 

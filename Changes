@@ -1,5 +1,9 @@
 =head1 CHANGES (Apache::VMonitor)
 
+=head1 2.02
+
+- sync API changes with 1.99_15
+
 =head1 2.01
 
 - in the single mode view sort 'Memory Maps' and 'Loaded Libs Sizes'
