@@ -20,7 +20,7 @@ my %require_common = (
 my %require_mp1 =  (
    "GTop"               => "0.09",
    "mod_perl"           => "1.25",
-   "Apache::Scoreboard" => "0.10",
+   "Apache::Scoreboard" => "0.12",
 );
 
 my %require_mp2 =  (

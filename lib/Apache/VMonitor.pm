@@ -37,7 +37,9 @@ use constant APACHE_IS_THREADED => MP2 &&
      : require Apache::MPM && Apache::MPM->is_threaded()
     );
 
-use constant HAS_VHOSTS => MP2; # 1.3 scoreboard has no vhost data
+# Apache::Scoreboard for 1.3 scoreboard has the vhost accessor only
+# starting from version 0.12
+use constant HAS_VHOSTS => (MP2 || $Apache::Scoreboard::VERSION > 0.11);
 
 use constant SERVER_LIMIT => MP2
     ? Apache::Const::SERVER_LIMIT

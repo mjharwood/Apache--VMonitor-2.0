@@ -4,6 +4,8 @@
 
 =item 2.02 -
 
+Apache::Scoreboard 0.12 added the vhost accessor, so use it in the
+presentation.
 
 
 =item 2.01 - Sun Oct 31 16:09:07 EST 2004
