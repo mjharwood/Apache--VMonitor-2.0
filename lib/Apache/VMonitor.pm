@@ -1,6 +1,6 @@
 package Apache::VMonitor;
 
-$Apache::VMonitor::VERSION = '2.03';
+$Apache::VMonitor::VERSION = '2.04';
 
 require 5.006;
 
