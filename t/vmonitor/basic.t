@@ -15,13 +15,13 @@ plan tests => 2 * scalar @vhosts;
 for my $name (@vhosts) {
 
     Apache::TestRequest::module($name);
-    my $hostport = Apache::TestRequest::hostport($config);
+    my $hostport = Apache::TestRequest::hostport($config) || '';
     t_debug("connecting to $hostport");
     my $location = "http://$hostport/vmonitor";
     my $str = GET_BODY_ASSERT $location;
 
     ok $str;
 
-    ok t_cmp(qr/Apache::VMonitor/, $str, $hostport);
+    ok t_cmp $str, qr/Apache::VMonitor/, $hostport;
 }
 
