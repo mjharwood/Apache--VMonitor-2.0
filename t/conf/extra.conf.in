@@ -19,3 +19,10 @@ PerlModule Apache::VMonitor
     SetHandler perl-script
     PerlResponseHandler Apache::VMonitor
 </Location>
+
+<IfModule mod_status.c>
+  ExtendedStatus On
+  <Location /server-status>
+      SetHandler server-status
+  </Location>
+</IfModule>
