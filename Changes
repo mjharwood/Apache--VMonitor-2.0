@@ -2,7 +2,7 @@
 
 =over 
 
-=item 2.03 - Fri Mar 11 18:37:08 EST 2005
+=item 2.03 - Fri Mar 18 15:26:11 EST 2005
 
 use %Apache::VMonitor::longflags long status lookup table, using the
 values returned by status() in the string context. So we always give
@@ -12,8 +12,8 @@ scoreboard, but not at the end).
 
 support new scoreboard status flags added in Apache 2.0
 
-note for Apache 2.x users: Elapsed and LastReq fields require Apache
-2.0.53 or higher (
+Elapsed and LastReq fields are now working properly, but for Apache
+2.x users: Apache 2.0.53 or higher is required.
 
 =item 2.02 - Fri Jan 21 17:07:53 EST 2005
 
