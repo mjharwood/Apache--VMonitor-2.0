@@ -25,7 +25,7 @@ my %require_mp1 =  (
 
 my %require_mp2 =  (
    "GTop"               => "0.12",
-   "mod_perl"           => "1.9911",
+   "mod_perl"           => "1.9912",
    "Apache::Scoreboard" => "2.0",
 );
 
