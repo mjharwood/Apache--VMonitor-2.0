@@ -6,24 +6,22 @@
 
 
 
-
 =item 2.01 - Sun Oct 31 16:09:07 EST 2004
 
-- sync API changes with mp1.99_15
+sync API changes with mp1.99_15
 
-- in the single process mode view sort 'Memory Maps' and 'Loaded Libs
-  Sizes' by filename
+in the single process mode view sort 'Memory Maps' and 'Loaded Libs
+Sizes' by filename
 
-- drop 5.005 support. It's too much of a hassle. version 0.08 is
-  available for those who are stuck with 5.005.
+drop 5.005 support. It's too much of a hassle. version 0.08 is
+available for those who are stuck with 5.005.
 
 
 
 =item 2.0 - Mon Dec 22 12:57:00 PST 2003
 
-- A complete rewrite of the previous generation to use Template
-  Toolkit, be subclassable and support mod_perl 1st and 2nd
-  generations.
+A complete rewrite of the previous generation to use Template Toolkit,
+be subclassable and support mod_perl 1st and 2nd generations.
 
 =back
 
