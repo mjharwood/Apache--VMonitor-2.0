@@ -12,6 +12,9 @@ scoreboard, but not at the end).
 
 support new scoreboard status flags added in Apache 2.0
 
+note: Elapsed and LastReq fields are supported by Apache 2.0.53 or
+higher
+
 =item 2.02 - Fri Jan 21 17:07:53 EST 2005
 
 Apache::Scoreboard 0.12 added the vhost accessor, so use it in the
