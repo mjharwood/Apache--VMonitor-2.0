@@ -18,7 +18,7 @@ for my $name (@vhosts) {
     my $hostport = Apache::TestRequest::hostport($config);
     t_debug("connecting to $hostport");
     my $location = "http://$hostport/vmonitor";
-    my $str = GET_BODY $location;
+    my $str = GET_BODY_ASSERT $location;
 
     ok $str;
 
