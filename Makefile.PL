@@ -20,12 +20,12 @@ my %require_common = (
 my %require_mp1 =  (
    "GTop"               => "0.09",
    "mod_perl"           => "1.25",
-   "Apache::Scoreboard" => "1.0",
+   "Apache::Scoreboard" => "0.10",
 );
 
 my %require_mp2 =  (
    "GTop"               => "0.12",
-   "mod_perl"           => "1.98",
+   "mod_perl"           => "1.9911",
    "Apache::Scoreboard" => "2.0",
 );
 
@@ -56,6 +56,7 @@ if ($mp_gen == 1) {
 
 }
 else {
+    require Apache2;
     require ModPerl::MM;
     ModPerl::MM::WriteMakefile(
         %common_opts,

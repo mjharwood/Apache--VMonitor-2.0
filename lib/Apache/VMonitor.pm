@@ -450,7 +450,7 @@ sub tmpl_system {
     # visual alert on swap usage:
     # 1) 5Mb < swap < 10 MB             color: light red
     # 2) 20% < swap (swapping is bad!)  color: red
-    # 3) 70% < swap (swap almost used!) color: red + blinking
+    # 3) 70% < swap (swap almost used!) color: red
 
   format_swap_data = "%5s av, %5s used, %5s free, %5s pagein, %5s pageout";
   IF 5000 < swap.used AND swap.used < 10000;
@@ -459,14 +459,12 @@ sub tmpl_system {
       USE format_line_swap = format("<b>Swap: <font color=\"#ff0000\">$format_swap_data</font></b>\n");
   ELSIF swap.usage >= 70;
       # swap on fire!
-      USE format_line_swap = format("<b>Swap: <blink><font color=\"#ff0000\">$format_swap_data</font></blink></b>\n");
+      USE format_line_swap = format("<b>Swap: <font color=\"#ff0000\">$format_swap_data</font></b>\n");
   ELSE;
       USE format_line_swap = format("<b>Swap: $format_swap_data</b>\n");
   END;
 
   format_line_swap(swap.ftotal, swap.fused, swap.ffree, swap.fpagein, swap.fpageout);
-
-
 
 -%]
 </pre>
@@ -1804,3 +1802,390 @@ sub fixup_url {
 1;
 __END__
 
+
+=pod
+
+=head1 NAME
+
+Apache::VMonitor - Visual System and Apache Server Monitor
+
+=head1 SYNOPSIS
+
+  # mod_status should be compiled in (it is by default)
+  ExtendedStatus On
+
+  # Configuration in httpd.conf
+  <Location /system/vmonitor>
+    SetHandler perl-script
+    PerlHandler Apache::VMonitor
+  </Location>
+
+  # startup file or <Perl> section:
+  use Apache::VMonitor();
+  $Apache::VMonitor::Config{refresh}  = 0;
+  $Apache::VMonitor::Config{verbose}  = 0;
+  $Apache::VMonitor::Config{system}   = 1;
+  $Apache::VMonitor::Config{apache}   = 1;
+  $Apache::VMonitor::Config{procs}    = 1;
+  $Apache::VMonitor::Config{mount}    = 1;
+  $Apache::VMonitor::Config{fs_usage} = 1;
+  $Apache::VMonitor::Config{apache_sort_by}  = 'size';
+  
+  $Apache::VMonitor::PROC_REGEX = join "\|", qw(httpd mysql squid);
+
+=head1 DESCRIPTION
+
+This module emulates the reporting functionalities of top(1), extended
+for mod_perl processes, mount(1), and df(1) utilities. It has a visual
+alerting capabilities and configurable automatic refresh mode. All the
+sections can be shown/hidden dynamically through the web interface.
+
+The are two main modes: 
+
+=over 
+
+=item * Multi processes mode
+
+All system processes and information are shown. See the detailed
+description of the sub-modes below.
+
+=item * Single process mode
+
+
+If you need to get an indepth information about a single process, you
+just need to click on its PID.
+
+If the chosen process is a mod_perl process, the following info is
+displayed:
+
+=over
+
+=item *
+
+Process type (child or parent), status of the process (I<Starting>,
+I<Reading>, I<Sending>, I<Waiting>, etc.), how long the current
+request is processed or the last one was processed if the process is
+inactive at the moment of the report take.
+
+=item *
+
+How many bytes transferred so far. How many requests served per child
+and per slot.
+
+=item *
+
+CPU times used by process: C<total>, C<utime>, C<stime>, C<cutime>,
+C<cstime>.
+
+=back
+
+For all (mod_perl and non-mod_perl) processes the following
+information is reported:
+
+=over
+
+=item *
+
+General process info: UID, GID, State, TTY, Command line arguments
+
+=item *
+
+Memory Usage: Size, Share, VSize, RSS
+
+=item *
+
+Memory Segments Usage: text, shared lib, date and stack.
+
+=item *
+
+Memory Maps: start-end, offset, device_major:device_minor, inode,
+perm, library path.
+
+=item *
+
+Loaded libraries sizes.
+
+=back
+
+Just like the multi-process mode, this mode allows you to
+automatically refresh the page on the desired intervals.
+
+=back
+
+Other available modes within 'Multi processes mode'.
+
+=over
+
+=item refresh mode
+
+From within a displayed monitor (by clicking on a desired refresh
+value) or by setting of B<$Apache::VMonitor::Config{refresh}> to a number of
+seconds between refreshes you can control the refresh rate. e.g:
+
+  $Apache::VMonitor::Config{refresh} = 60;
+
+will cause the report to be refreshed every single minute.
+
+Note that 0 (zero) turns automatic refreshing off.
+
+=item top(1) emulation (system)
+
+Just like top(1) it shows current date/time, machine uptime, average
+load, all the system CPU and memory usage: CPU load, Real memory and
+swap partition usage.
+
+The top(1) section includes a swap space usage visual alert
+capability. The color of the swap report will be changed:
+
+         swap usage               report color
+   ---------------------------------------------------------
+   5Mb < swap < 10 MB             light red
+   20% < swap (swapping is bad!)  red
+   70% < swap (almost all used!)  red 
+
+
+The module doesn't alert when swap is being used just a little (<5Mb),
+since it happens most of the time, even when there is plenty of free
+RAM.
+
+If you don't want the system section to be displayed set:
+
+  $Apache::VMonitor::Config{system} = 0;
+
+The default is to display this section.
+
+=item top(1) emulation (Apache/mod_perl processes)
+
+Then just like in real top(1) there is a report of the processes, but
+it shows all the relevant information about mod_perl processes only!
+
+The report includes the status of the process (I<Starting>,
+I<Reading>, I<Sending>, I<Waiting>, etc.), process' ID, time since
+current request was started, last request processing time, size,
+shared, virtual and resident size.  It shows the last client's IP and
+Request URI (only 64 chars, as this is the maximum length stored by
+underlying Apache core library).
+
+You can sort the report by any column, see the
+L<CONFIGURATION|/CONFIGURATION> section for details.
+
+The section is concluded with a report about the total memory being
+used by all mod_perl processes as reported by kernel, plus extra
+number, which results from an attempt to approximately calculate the
+real memory usage when memory sharing is taking place. The calculation
+is performed by using the following logic:
+
+=over
+
+=item 1
+
+For each process sum up the difference between shared and total
+memory.
+
+=item 2
+
+Now if we add the share size of the process with maximum shared
+memory, we will get all the memory that is actually used by all
+mod_perl processes, but the parent process.
+
+=back
+
+Please note that this might be incorrect for your system, so you
+should use this number on your own risk. We have verified this number
+on the Linux OS, by taken the number reported by C<Apache::VMonitor>,
+then stopping mod_perl and looking at the system memory usage. The
+system memory went down approximately by the number reported by the
+tool. Again, use this number wisely!
+
+If you don't want the mod_perl processes section to be displayed set:
+
+  $Apache::VMonitor::Config{apache} = 0;
+
+The default is to display this section.
+
+=item top(1) emulation (any processes)
+
+
+This section, just like the mod_perl processes section, displays the
+information in a top(1) fashion. To enable this section you have to
+set:
+
+  $Apache::VMonitor::Config{procs} = 1;
+
+The default is not to display this section.
+
+Now you need to specify which processes are to be monitored. The
+regular expression that will match the desired processes is required
+for this section to work. For example if you want to see all the
+processes whose name include any of these strings: I<http>, I<mysql>
+and I<squid>, the following regular expression is to be used:
+
+  $Apache::VMonitor::PROC_REGEX = join "\|", qw(httpd mysql squid);
+
+=item mount(1) emulation
+
+This section reports about mounted filesystems, the same way as if you
+have called mount(1) with no parameters.
+
+If you want the mount(1) section to be displayed set:
+
+  $Apache::VMonitor::Config{mount} = 1;
+
+The default is NOT to display this section.
+
+=item df(1) emulation 
+
+This section completely reproduces the df(1) utility. For each mounted
+filesystem it reports the number of total and available blocks (for
+both superuser and user), and usage in percents.
+
+In addition it reports about available and used file inodes in numbers
+and percents.
+
+This section has a capability of visual alert which is being triggered
+when either some filesystem becomes more than 90% full or there are
+less than 10% of free file inodes left. When this event happens the
+filesystem related report row will be displayed in the bold font and
+in the red color. 
+
+If you don't want the df(1) section to be displayed set:
+
+  $Apache::VMonitor::Config{fs_usage} = 0;
+
+The default is to display this section.
+
+=item abbreviations and hints
+
+The monitor uses many abbreviations, which might be knew for you. If
+you enable the VERBOSE mode with:
+
+  $Apache::VMonitor::Config{verbose} = 1;
+
+this section will reveal all the full names of the abbreviations at
+the bottom of the report.
+
+The default is NOT to display this section.
+
+=back
+
+=head1 CONFIGURATION
+
+
+To enable this module you should modify a configuration in
+B<httpd.conf>, if you add the following configuration:
+
+  <Location /system/vmonitor>
+    SetHandler perl-script
+    PerlHandler Apache::VMonitor
+  </Location>
+
+The monitor will be displayed when you request
+http://localhost/system/vmonitor or alike.
+
+You probably want to protect this location, from unwanted visitors. If
+you are accessing this location from the same IP address, you can use
+a simple host based authentication:
+
+  <Location /system/vmonitor>
+    SetHandler perl-script
+    PerlHandler Apache::VMonitor
+    order deny, allow
+    deny  from all
+    allow from 132.123.123.3
+  </Location>
+
+Alternatively you may use the Basic or other authentication schemes
+provided by Apache and various extensions.
+
+You can control the behavior of this module by configuring the
+following variables in the startup file or inside the
+C<E<lt>PerlE<gt>> section.
+
+Module loading:
+
+  use Apache::VMonitor();
+
+Monitor reporting behavior:
+
+  $Apache::VMonitor::Config{refresh}  = 0;
+  $Apache::VMonitor::Config{verbose}  = 0;
+
+Control over what sections to display:
+
+  $Apache::VMonitor::Config{system}   = 1;
+  $Apache::VMonitor::Config{apache}   = 1;
+  $Apache::VMonitor::Config{procs}    = 1;
+  $Apache::VMonitor::Config{mount}    = 1;
+  $Apache::VMonitor::Config{fs_usage} = 1;
+
+Control the sorting of the mod_perl processes report. You can sort
+them by one of the following columns: I<"pid">, I<"mode">,
+I<"elapsed">, I<"lastreq">, I<"served">, I<"size">, I<"share">,
+I<"vsize">, I<"rss">, I<"client">, I<"request">. For example to sort
+by the process size the following setting will do:
+
+  $Apache::VMonitor::Config{apache_sort_by}  = 'size';
+
+A regex to match processes for 'PROCS' section:
+
+  $Apache::VMonitor::PROC_REGEX = join "\|", qw(httpd mysql squid);
+
+Read the L<DESCRIPTION|/DESCRIPTION> section for a complete
+explanation of each of these variables.
+
+=head1 DYNAMIC RECONFIGURATION
+
+C<Apache::VMonitor> allows you to dynamically turn on and off all the
+sections and enter a verbose mode that explains each section and the
+used abbreviations. These dynamic settings stored in the URI and not
+on the server side.
+
+
+=head1 PREREQUISITES
+
+You need to have B<Apache::Scoreboard> installed and configured in
+I<httpd.conf>, which in turn requires mod_status to be installed. You
+also have to enable the extended status for mod_status, for this
+module to work properly. In I<httpd.conf> add:
+
+  ExtendedStatus On
+
+Notice that turning the C<ExtendedStatus> mode I<On> is not
+recommended for high-performance production sites, as it adds an
+overhead to the request response times.
+
+You also need B<Time::HiRes> and B<GTop> to be installed.
+
+And of course you need a running mod_perl enabled apache server.
+
+=head1 Subclassing
+
+It should be trivial to subclass C<Apache::VMonitor>. Just override
+I<tmpl_> and or I<data_> methods and off you go.
+
+=head1 BUGS
+
+Apache 2.0 doesn't have a complete scoreboard - access times are missing.
+
+=head1 TODO
+
+I want to include a report about open file handles per process to
+track file handlers leaking. It's easy to do that by just reading them
+from C</proc/$pid/fd> but you cannot do that unless you are
+root. C<libgtop> doesn't have this capability - if you come up with
+solution, please let me know. Thanks!
+
+=head1 SEE ALSO
+
+L<Apache>, L<mod_perl>, L<Apache::Scoreboard>, L<GTop>
+
+=head1 AUTHORS
+
+Stas Bekman <stas@stason.org>
+
+=head1 COPYRIGHT
+
+The Apache::VMonitor module is free software; you can redistribute it
+and/or modify it under the same terms as Perl itself.
+
+=cut
