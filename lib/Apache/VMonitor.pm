@@ -24,6 +24,19 @@ my $tt = Template->new({
     #PRE_CHOMP => 1,
 });
 
+@Apache::VMonitor::longflags = (
+    "Open slot with no current process",
+    "Starting up",
+    "Waiting for Connection",
+    "Reading Request",
+    "Sending Reply",
+    "KeepAlive (read)",
+    "Logging",
+    "DNS Lookup",
+    "Gracefully finishing",
+    "None",
+);
+
 ########################
 # default config values
 ########################
@@ -507,7 +520,7 @@ sub data_apache {
 
         my $worker_score = $parent_score->worker_score;
         my $record = $self->score2record($pid, $parent_score, $worker_score);
-        %$record = %$mem; # append proc data
+        @$record{keys %$mem} = values %$mem; # append proc data
 
         $data{ $record->{pid} } = $record;
     }
@@ -557,7 +570,7 @@ warn "ppid: $ppid\n";
     for my $pid (sort $sort_sub keys %data) {
 
         my $rec = $data{$pid};
-        my $lastreq = $rec->{lastreq}/1000;
+        my $lastreq = $rec->{lastreq} ? $rec->{lastreq}/1000 : 0;
 
         # print sorted
         push @records, {
@@ -578,7 +591,7 @@ warn "ppid: $ppid\n";
             request   => $rec->{request},
         };
         $max_client_len = length $rec->{client}
-            if length $rec->{client}  > $max_client_len;
+            if $rec->{client} && length $rec->{client}  > $max_client_len;
         $max_pid_len = length $pid
             if length $pid  > $max_pid_len;
     }
@@ -660,7 +673,7 @@ sub score2record {
         pid_link   => fixup_url($self->{url}, pid => $pid),
         mode       => $worker_score->status,
         elapsed    => $elapsed,
-        lastreq    => $worker_score->req_time,
+        lastreq    => $worker_score->req_time || 0,
         served     => $worker_score->my_access_count,
         client     => $worker_score->client,
         request    => $worker_score->request,
@@ -761,9 +774,8 @@ sub data_apache_single {
     my $pid = $self->{pid};
     my $data;
 
+    ### proc command name/args
     my($proclist, $entries) = $gtop->proclist;
-
-    # get the proc command name
     my $cmd = '';
     for my $proc_pid ( @$entries ){
         $cmd = $gtop->proc_state($pid)->cmd, last if $pid == $proc_pid;
@@ -772,9 +784,6 @@ sub data_apache_single {
     $data->{link_back} = fixup_url($self->{url}, pid => 0);
     $data->{pid} = $pid;
     $data->{cmd} = $cmd;
-  
-    #use Data::Dumper;
-    #warn Dumper $data;
 
     ### memory usage
     my $mem = $self->pid2mem($pid);
@@ -797,11 +806,11 @@ sub data_apache_single {
     if (my $parent_score = $self->pid2parent_score($pid)) {
         my $worker_score = $parent_score->worker_score;
         my $rec = $self->score2record($pid, $parent_score, $worker_score);
-        my $lastreq = $rec->{lastreq}/1000;
+        my $lastreq = $rec->{lastreq} ? $rec->{lastreq}/1000 : 0;
         $data->{rec} = {
             is_httpd_proc => 1,
             proc_type => ($pid == getppid ? "Parent" : "Child"),
-            mode      => $rec->{mode},
+            mode_long => $Apache::VMonitor::longflags[$rec->{mode}],
             elapsed   => $rec->{elapsed},
             felapsed  => format_time($rec->{elapsed}),
             lastreq   => $lastreq,
@@ -809,11 +818,41 @@ sub data_apache_single {
             fserved   => format_counts($rec->{served}),
             client    => $rec->{client},
             request   => $rec->{request},
+            access_count     => $worker_score->access_count,
+            my_access_count  => $worker_score->my_access_count,
+            bytes_served     => $worker_score->bytes_served,
+            fbytes_served    => size_string($worker_score->bytes_served),
+            my_bytes_served  => $worker_score->my_bytes_served,
+            fmy_bytes_served => size_string($worker_score->my_bytes_served),
         };
+
+        my @cpu_cols  = qw(total utime stime cutime cstime);
+        my @cpu_times = $worker_score->times();
+        my $cpu_total = eval join "+", @cpu_times;
+        for ($cpu_total, @cpu_times) {
+            my $key = "cpu_" . shift @cpu_cols;
+            $data->{rec}->{$key} = $_/100;
+        }
 
     }
 
-    # memory segments usage
+    ### generic process info
+    my $proc_info;
+    # UID and STATE
+    my $state = $gtop->proc_state($pid);
+    $proc_info->{uid} = scalar getpwuid $state->uid;
+    $proc_info->{gid} = scalar getgrgid $state->gid;
+    $proc_info->{state} = $state->state;
+    # TTY
+    my $proc_uid  = $gtop->proc_uid($pid);
+    my $tty = $proc_uid->tty;
+    $tty = 'None' if $tty == -1;
+    $proc_info->{tty} = $tty;
+    # ARGV
+    $proc_info->{argv} = join " ", @{($gtop->proc_args($pid))[1]};
+    $data->{proc} = $proc_info;
+
+    ### memory segments usage
     my $proc_segment = $gtop->proc_segment($pid);
     no strict 'refs';
     for (qw(text_rss shlib_rss data_rss stack_rss)) {
@@ -823,7 +862,7 @@ sub data_apache_single {
     }
 
 
-    # memory maps
+    ### memory maps
     my($procmap, $maps) = $gtop->proc_map($pid);
     my $number = $procmap->number;
     my %libpaths = ();
@@ -850,8 +889,9 @@ sub data_apache_single {
         ptr_size => (length(pack("p", 0)) == 8 ? 16 : 8),
     };
 
-    # loaded shared libs sizes
-    my %libsizes = map { $_  => -s $_ } grep { -e $_} grep !/^-$/, keys %libpaths;
+    ### loaded shared libs sizes
+    my %libsizes = map { $_  => -s $_ } 
+        grep { -e $_} grep !/^-$/, keys %libpaths;
 
     my @lib_sizes = ();
     my $total = 0;
@@ -905,11 +945,11 @@ sub tmpl_apache_single {
 <hr>
 [%-
 
-   "<p>[ <a href=\"$link_back\">Back to multiproc mode</a> ]</p>";
+   "[ <a href=\"$link_back\">Back to multiproc mode</a> ]";
    IF proc_is_dead;
        "Sorry, the process $pid ($cmd) doesn't exist anymore!";
    ELSE;
-       "<p><b>Extensive Status for PID $pid ($cmd)</b>&nbsp; &nbsp;</p>";
+       "<h3 align='middle'>Extensive Status for PID $pid ($cmd)&nbsp; &nbsp;</h3>";
        PROCESS single_process;
    END;
 
@@ -920,13 +960,19 @@ sub tmpl_apache_single {
 <pre>
 [%-
 
-  # PROCESS single_httpd_process IF rec.is_httpd_proc;
+  PROCESS single_httpd_process IF rec.is_httpd_proc;
 
   "<hr><b>General process info:</b>\n";
+  USE format_proc_item = format("  <b>%-25s</b> : %s\n");
+  format_proc_item("UID",   proc.uid);
+  format_proc_item("GID",   proc.gid);
+  format_proc_item("State", proc.state);
+  format_proc_item("TTY",   proc.tty);
+  format_proc_item("Command line arguments", proc.argv);
 
   # memory usage
   "\n<hr><b>Memory Usage</b> (in bytes):\n\n";
-  USE format_mem_item = format("%-10.10s : %10d (%s)\n");
+  USE format_mem_item = format("  %-10.10s : %10d (%s)\n");
   format_mem_item("Size",  mem.size,  mem.fsize);
   format_mem_item("Share", mem.share, mem.fshare);
   format_mem_item("VSize", mem.vsize, mem.fvsize);
@@ -934,19 +980,19 @@ sub tmpl_apache_single {
 
   # memory segments usage
   "\n<HR><B>Memory Segments Usage</B> (in bytes):\n\n";
-  USE format_mem_segment_item = format("%-10.10s : %10d (%s)\n");
-  format_mem_segment_item("text_rss",  mem_segm.text_rss,  mem_segm.ftext_rss);
-  format_mem_segment_item("shlib_rss", mem_segm.shlib_rss, mem_segm.fshlib_rss);
-  format_mem_segment_item("data_rss",  mem_segm.data_rss,  mem_segm.fdata_rss);
-  format_mem_segment_item("stack_rss", mem_segm.stack_rss, mem_segm.fstack_rss);
+  USE format_mem_segment_item = format("  %-10.10s : %10d (%s)\n");
+  format_mem_segment_item("Text",  mem_segm.text_rss,  mem_segm.ftext_rss);
+  format_mem_segment_item("Shlib", mem_segm.shlib_rss, mem_segm.fshlib_rss);
+  format_mem_segment_item("Data",  mem_segm.data_rss,  mem_segm.fdata_rss);
+  format_mem_segment_item("Stack", mem_segm.stack_rss, mem_segm.fstack_rss);
 
   # memory maps
   "<hr><b>Memory Maps:</b>\n\n";
    ptr_size = mem_maps.ptr_size;
-   USE format_map_header = format("<b>%${ptr_size}s-%-${ptr_size}s %${ptr_size}s  %3s:%3s %7s - %4s  - %s</b>\n");
+   USE format_map_header = format("  <b>%${ptr_size}s-%-${ptr_size}s %${ptr_size}s  %3s:%3s %7s - %4s  - %s</b>\n");
    format_map_header("start", "end", "offset", "maj", "min", "inode", "perm", "filename");
    USE format_map_item = 
-       format("%0${ptr_size}lx-%0${ptr_size}lx %0${ptr_size}lx - %02x:%02x %08lu - %4s - %s\n");
+       format("  %0${ptr_size}lx-%0${ptr_size}lx %0${ptr_size}lx - %02x:%02x %08lu - %4s - %s\n");
    FOR rec = mem_maps.records;
        format_map_item(rec.start, rec.end, rec.offset, rec.device_major, rec.device_minor, rec.inode, rec.perm, rec.filename);
    END;
@@ -968,37 +1014,53 @@ sub tmpl_apache_single {
 [%-
   USE HTML;
 
-  "<b>httpd specific info:</b>\n";
+  "<hr><b>httpd-specific Info:</b>\n\n";
 
-  USE format_item = format("<b>%-25s</b> : %s\n");
+  USE format_item = format("  <b>%-25s</b> : %s\n");
   format_item("Process type", rec.proc_type);
 
+  format_item("Status", rec.mode_long);
 
-  USE format_child =
-      format("%3d: %s %1s %s %s %4s %5s %5s %5s %5s %${max_client_len}.${max_client_len}s %.64s");
-
-      # alert on workers that are still at work for a single request
-      # for more than 15 secs
+  IF rec.elapsed;
       elapsed_class = rec.elapsed > 15 ? "alert" : "normal";
-      rec.felapsed = "<span class=\"$elapsed_class\">${rec.felapsed}</span>";
-
-      # alert on workers that worked for a single request for more
-      # than 15 secs
+      rec.felapsed = "<span class=\"$elapsed_class\"><b>${rec.felapsed}</b></span>";
+      format_item("Cur. req. is running for", rec.felapsed);
+  ELSE;
       lastreq_class = rec.lastreq > 15 ? "alert" : "normal";
       rec.flastreq = "<span class=\"$lastreq_class\">${rec.flastreq}</span>";
+      format_item("Last request processed in", rec.flastreq);
+  END;
 
-      # escape HTML in request URI to prevent cross-site scripting attack
-      rec.frequest = HTML.escape(rec.request);
+  format_item("", "");
 
-      # pid linked
-      times = max_pid_len - rec.pid.length;
-      spacing = times > 0 ? space.repeat(times) : "";
-      pid_link = "$spacing<a href=\"${rec.pid_link}\">${rec.pid}</a>";
+  USE format_slot_header = format("<b>%16s</b>   <b>%16s</b>");
+  slot_header = format_slot_header("This slot", "This child");
+  format_item("", slot_header);
 
-      item_class = loop.count % 2 ? "item_even" : "item_odd";
-      "<span class=\"$item_class\">";
-      format_child(rec.count, pid_link, rec.mode, rec.felapsed, rec.flastreq, rec.fserved,  rec.client, rec.frequest);
-      "</span>\n";
+  USE format_slot_entry = format("%16s   %16s");
+  slot_entry = format_slot_entry(rec.access_count, rec.my_access_count);
+  format_item("Requests Served", slot_entry);
+
+  USE format_slot_entry = format("(%8s) %5s   (%8s) %5s");
+  slot_entry = format_slot_entry(rec.bytes_served,    rec.fbytes_served, 
+                                 rec.my_bytes_served, rec.fmy_bytes_served);
+  format_item("Bytes Transferred", slot_entry);
+
+  format_item("", "");
+
+  format_item("Client IP or DNS", rec.client);
+  # escape HTML in request URI to prevent cross-site scripting attack
+  rec.frequest = HTML.escape(rec.request);
+  format_item("Request (first 64 chars)", rec.frequest);
+
+  format_item("", "");
+
+  USE format_cpu_header = format("%8s  %8s  %8s  %8s  %8s");
+  cpu_header = format_cpu_header("total", "utime", "stime", "cutime", "cstime");
+  format_item("CPU times (secs)", cpu_header);
+  USE format_cpu_data = format("%8d  %8d  %8d  %8d  %8d");
+  cpu_data = format_cpu_data(rec.cpu_total, rec.cpu_utime, rec.cpu_stime, rec.cpu_cutime, rec.cpu_cstime);
+  format_item("", cpu_data);
 
 -%]
 [% END %]
