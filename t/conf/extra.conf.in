@@ -1,0 +1,21 @@
+# make sure that we test under Taint + warnings mode
+<IfDefine MODPERL2>
+    PerlSwitches -wT
+</IfDefine>
+<IfDefine !MODPERL2>
+    PerlTaintCheck On
+    PerlWarn      On
+</IfDefine>
+
+##### DEVMODE: Remove in production ###
+PerlModule Apache::Reload
+PerlInitHandler Apache::Reload
+PerlSetVar ReloadAll Off
+PerlSetVar ReloadModules "Apache::VMonitor"
+#PerlSetVar ReloadDebug On
+
+PerlModule Apache::VMonitor
+<Location /vmonitor>
+    SetHandler perl-script
+    PerlResponseHandler Apache::VMonitor
+</Location>
