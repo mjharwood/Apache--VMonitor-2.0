@@ -6,23 +6,55 @@ use strict;
 use warnings; # XXX: 5.005
 no warnings 'redefine'; # XXX
 
-use Apache::RequestRec ();
-use Apache::RequestIO ();
-use APR::Table ();
-
 use Template ();
 use GTop ();
 
-use Apache::Const qw(OK);
+BEGIN {
+    use constant MP2 => eval { require mod_perl; $mod_perl::VERSION > 1.99 };
 
-use constant MP2 => eval { require mod_perl; $mod_perl::VERSION > 1.99 };
+    if (MP2) {
+        require Apache::ServerUtil;
+        require Apache::RequestRec;
+        require Apache::RequestIO;
+        require APR::Table;
+        require Apache::Const;
+        Apache::Const->import('OK');
+    } else {
+        require Apache;
+        require Apache::Constants;
+        Apache::Constants->import('OK');
+    }
+    require Apache::Scoreboard;
+    require Time::HiRes;
+}
+
+# once 2.0 is released drop the Apache::MPM_IS_THREADED case
+use constant APACHE_IS_THREADED => MP2 &&
+    ($mod_perl::VERSION < 1.9912
+     ? Apache::MPM_IS_THREADED()
+     : require Apache::MPM && Apache::MPM->is_threaded()
+    );
+
+use constant HAS_VHOSTS => MP2; # 1.3 scoreboard has no vhost data
+
+use constant SERVER_LIMIT => MP2
+    ? Apache::Const::SERVER_LIMIT
+    : Apache::Constants::HARD_SERVER_LIMIT;
+
+#use constant THREAD_LIMIT => MP2
+#    ? Apache::Const::THREAD_LIMIT
+#    : 0; # no threads in mp1
+
+use constant SINGLE_PROCESS_MODE => MP2
+    ? Apache::exists_config_define('ONE_PROCESS')
+    : Apache->define('X');
 
 my $gtop = GTop->new;
 
-my $tt = Template->new({
-    #POST_CHOMP => 1,
-    #PRE_CHOMP => 1,
-});
+my $tt;
+#my $tt = Template->new({});
+
+
 
 @Apache::VMonitor::longflags = (
     "Open slot with no current process",
@@ -36,6 +68,8 @@ my $tt = Template->new({
     "Gracefully finishing",
     "None",
 );
+
+use Devel::Leak;
 
 ########################
 # default config values
@@ -61,18 +95,23 @@ my @sects = qw(system apache procs mount fs_usage verbose);
 
 my %cfg = ();
 
-# XXX: mp1/p5.005
-sub handler : method {
+sub handler_mp1 ($$)     { &run }
+sub handler_mp2 : method { &run }
+*handler = MP2 ? \&handler_mp2 : \&handler_mp1;
+my $counter = 0;
+
+sub run {
     my ($class, $r) = @_;
     $class = ref($class)||$class;
+    #$tt = Template->new({});
 
     my %params = map { split('=', $_, 2) } split /[&]/, $r->args;
-
     # modify the default args if requested
-    map {
-        $cfg{$_} = $Apache::VMonitor::Config{$_};       # first the defaults
-        $cfg{$_} = $params{$_} if defined $params{$_};  # second the dynamic config
-    } keys %Apache::VMonitor::Config;
+    for (keys %Apache::VMonitor::Config) {
+        $cfg{$_} = exists $params{$_}
+            ? $params{$_}
+            : $Apache::VMonitor::Config{$_};
+    }
 
     my $pid = $params{pid} || 0;
 
@@ -82,7 +121,7 @@ sub handler : method {
     # if refresh is non-null, set the refresh header
     $r->headers_out->set(Refresh => "$cfg{refresh}; URL=$url") if $cfg{refresh};
 
-    $r->content_type('text/html');
+    MP2 ? $r->content_type('text/html') : $r->send_http_header('text/html');
 
     my $self = $class->new(
         r     => $r,
@@ -92,6 +131,20 @@ sub handler : method {
         url   => $url,
         pid   => $pid,
     );
+
+    $self->{tt} ||= Template->new({
+        BLOCKS => {
+            tmpl_start_html    => $self->tmpl_start_html(),
+            tmpl_end_html      => $self->tmpl_end_html(),
+            tmpl_procs         => $self->tmpl_procs(),
+            tmpl_nav_bar       => $self->tmpl_nav_bar(),
+            tmpl_fs_usage      => $self->tmpl_fs_usage(),
+            tmpl_mount         => $self->tmpl_mount(),
+            tmpl_apache        => $self->tmpl_apache(),
+            tmpl_apache_single => $self->tmpl_apache_single(),
+            tmpl_system        => $self->tmpl_system(),
+        },
+    });
 
     $self->generate;
 
@@ -104,6 +157,8 @@ sub new {
     return $self;
 }
 
+
+my @attrs = qw(size vsize resident share rss);
 
 sub generate {
     my $self = shift;
@@ -118,21 +173,127 @@ sub generate {
     else {
         # XXX: fixme
         my @sects = qw(system apache procs fs_usage mount);
-        $cfg->{$_} && push @items, $_ for (@sects);
+        #@sects = qw(fs_usage);
+        $cfg->{$_} && push @items, $_ for @sects;
         push @items, qw(nav_bar);
-        $cfg->{$_} && push @items, $_ for (qw(verbose));
+        $cfg->{$_} && push @items, $_ for qw(verbose);
 
     }
 
     push @items, qw(end_html);
 
-    for (@items) {
-        my $tmpl_sub = $self->can("tmpl_$_");
-        next unless $tmpl_sub;
-        my $data_sub = $self->can("data_$_");
+    #@items = qw(start_html fs_usage mount end_html);
+    #@items = qw(start_html procs fs_usage mount end_html);
+#@items = qw(start_html);
+
+#@items = qw(procs);
+
+
+
+   # my $handle;
+   # my $count = Devel::Leak::NoteSV($handle);
+    for my $item (@items) {
+
+    #{
+        #warn "\t$item\n";
+
+        #my $before = $gtop->proc_mem($$);
+        #my %before = map { $_ => $before->$_() } @attrs;
+
+        #my $tmpl_sub = $self->can("tmpl_$item");
+        my $tmpl_block = "tmpl_$item";
+        #next unless $tmpl_sub;
+        #my $data_sub = $self->can("data_$item");
+        my $data_sub = "data_$item";
+        #$data_sub = 0 if $item eq 'fs_usage';
         my $data = $data_sub ? $self->$data_sub : {};
-        $tt->process($self->$tmpl_sub, $data) or warn $tt->error();
+
+        #my $tmpl = $self->$tmpl_sub();
+        #my $tt = Template->new({});
+        $tt->process($tmpl_block, $data) or warn $tt->error();
+
+       # my $after = $gtop->proc_mem($$);
+#        my %after = map {$_ => $after->$_()} @attrs;
+#        warn sprintf "%-10s : %-5s\n", $_, 
+#            GTop::size_string($after{$_} - $before{$_}),
+#                  for sort @attrs;
+    #}
+
     }
+    #Devel::Leak::CheckSV($handle);
+
+    return;
+
+    for my $item (@items) {
+    my $handle;
+    my $count = Devel::Leak::NoteSV($handle);
+    {
+        warn "\t$item\n";
+
+        my $before = $gtop->proc_mem($$);
+        my %before = map { $_ => $before->$_() } @attrs;
+
+        #my $tmpl_sub = $self->can("tmpl_$item");
+        my $tmpl_sub = "tmpl_$item";
+        next unless $tmpl_sub;
+        #my $data_sub = $self->can("data_$item");
+        my $data_sub = "data_$item";
+        #$data_sub = 0 if $item eq 'fs_usage';
+        my $data = $data_sub ? $self->$data_sub : {};
+
+        my $tmpl = $self->$tmpl_sub();
+        my $tt = Template->new({});
+        $tt->process($tmpl, $data) or warn $tt->error();
+
+        my $after = $gtop->proc_mem($$);
+        my %after = map {$_ => $after->$_()} @attrs;
+        warn sprintf "%-10s : %-5s\n", $_, 
+            GTop::size_string($after{$_} - $before{$_}),
+                  for sort @attrs;
+    }
+    Devel::Leak::CheckSV($handle);
+    }
+
+    
+    return;
+
+
+    for my $item (@items) {
+        #my $handle;
+        #my $count = Devel::Leak::NoteSV($handle);
+        warn "\t$item\n";
+        {
+            my $before = $gtop->proc_mem($$);
+            my %before = map { $_ => $before->$_() } @attrs;
+            #next if $item eq 'fs_usage';
+            my $tmpl_sub = $self->can("tmpl_$item");
+            next unless $tmpl_sub;
+            my $data_sub = $self->can("data_$item");
+            #$data_sub = 0 if $item eq 'fs_usage';
+            my $data = $data_sub ? $self->$data_sub : {};
+            my $mid = $gtop->proc_mem($$);
+            my %mid = map { $_ => $mid->$_() } @attrs;
+            my $tmpl = $self->$tmpl_sub;
+            my $mid2 = $gtop->proc_mem($$);
+            my %mid2 = map { $_ => $mid2->$_() } @attrs;
+
+            unless ($item eq 'fs_usage') {
+                $tt->process($tmpl, $data) or warn $tt->error();
+            }
+
+            my $after = $gtop->proc_mem($$);
+            my %after = map {$_ => $after->$_()} @attrs;
+            warn sprintf "%-10s : %-5s %-5s %-5s\n", $_, 
+                GTop::size_string($mid{$_} - $before{$_}),
+                      GTop::size_string($mid2{$_} - $mid{$_}),
+                            GTop::size_string($after{$_} - $mid2{$_})
+                                  for sort @attrs;
+        }
+        #Devel::Leak::CheckSV($handle);
+
+    }
+    warn "\n\n\n\n";
+
 }
 
 # XXX: could make it a method
@@ -144,12 +305,11 @@ sub generate {
 sub fixup_url {
     my($url, %pairs) = @_;
 
-    my $new_url = $url;
     while (my($k, $v) = each %pairs) {
-        $new_url =~ s/$k=([^&]+)?/$k=$v/;
+        $url =~ s/$k=([^&]+)?/$k=$v/;
     }
 
-    return $new_url;
+    return $url;
 }
 
 
@@ -163,6 +323,7 @@ sub fixup_url {
 
 sub data_start_html {
     my $self = shift;
+   # return {};
 
     my $url = $self->{url};
     my $cfg = $self->{cfg};
@@ -179,7 +340,7 @@ sub data_start_html {
 }
 
 sub tmpl_start_html {
-
+    #return \'';
     return \ <<'EOT';
 <html>
 <head>
@@ -250,13 +411,18 @@ EOT
 #sub data_end_html { {} }
 
 sub tmpl_end_html {
-
+#return \'';
     return \ <<'EOT';
 </body>
 </html>
 EOT
 }
 
+
+
+sub data_end_html {
+    return {};
+}
 
 
 
@@ -266,6 +432,7 @@ EOT
 
 sub data_nav_bar {
     my $self = shift;
+    #return {};
 
     my $url = $self->{url};
     my $cfg = $self->{cfg};
@@ -288,7 +455,7 @@ sub data_nav_bar {
 }
 
 sub tmpl_nav_bar {
-
+#return \'';
     return \ <<'EOT';
 <hr>
    <font size=-1>
@@ -317,6 +484,7 @@ EOT
 
 sub data_system {
     my $self = shift;
+    return {};
 
     # uptime and etc...
     my($min, $hour, $day, $mon, $year) = (localtime)[1..5];
@@ -374,7 +542,7 @@ sub data_system {
 
 
 sub tmpl_system {
-
+return \'';
     return \ <<'EOT';
 <hr>
 <pre>
@@ -447,18 +615,21 @@ EOT
 
 ### apache ###
 
+sub scoreboard_image {
+    MP2 ? Apache::Scoreboard->image(shift->{r}->pool)
+        : Apache::Scoreboard->image();
+}
+
 sub data_apache {
     my $self = shift;
+    #return {};
 
-    require Time::HiRes;
+    if (MP2 && $Apache::Scoreboard::VERSION < 2.0) {
+        die "Apache::Scoreboard 2.0 or higher is wanted, " .
+            "this is only version $Apache::Scoreboard::VERSION";
+    }
 
-    # XXX, how do we make it work for mp1?
-    require Apache::Scoreboard;
-    die "Apache::Scoreboard 2.0 or higher is wanted, " .
-        "this is only version $Apache::Scoreboard::VERSION"
-            unless $Apache::Scoreboard::VERSION >= 2.0;
-
-    my $image = Apache::Scoreboard->image($self->{r}->pool);
+    my $image = $self->scoreboard_image();
 
     # total memory usage stats
     my %mem_total = map { $_ => 0 } qw(size real max_shared);
@@ -476,20 +647,23 @@ sub data_apache {
     my %cols = (
                  # WIDTH # LABEL                   # SORT
         pid     => [ 3, 'PID'                     , 'd'],
-        mode    => [ 1, 'M'                       , 's'],
-        elapsed => [ 7, 'Elapsed'                 , 'd'],
-        lastreq => [ 7, 'LastReq'                 , 'd'],
-        served  => [ 4, 'Srvd'                    , 'd'],
         size    => [ 5, 'Size'                    , 'd'],
         share   => [ 5, 'Share'                   , 'd'],
         vsize   => [ 5, 'VSize'                   , 'd'],
         rss     => [ 5, 'Rss'                     , 'd'],
+        mode    => [ 1, 'M'                       , 's'],
+        elapsed => [ 7, 'Elapsed'                 , 'd'],
+        lastreq => [ 7, 'LastReq'                 , 'd'],
+        served  => [ 4, 'Srvd'                    , 'd'],
         client  => [15, 'Client'                  , 's'],
+        vhost   => [15, 'Virtual Host'            , 's'],
         request => [27, 'Request (first 64 chars)', 's'],
     );
 
-    my @cols_sorted = qw(pid mode elapsed lastreq served size share
-                         vsize rss client request);
+    my @cols_sorted = qw(pid size share vsize rss mode elapsed lastreq served
+                         client);
+    push @cols_sorted, "vhost" if HAS_VHOSTS;
+    push @cols_sorted, "request";
 
     my $sort_field = lc($cfg{apache_sort_by}) || 'size';
     $sort_field = 'size' unless $cols{$sort_field};
@@ -502,81 +676,168 @@ sub data_apache {
             $sort_ascend %= 2; # reverse sorting order
         }
 
-        # replace sort type, with link to sort
-        $cols{$_}[2] = fixup_url($self->{url},
+        # add a link to sort by that field
+        $cols{$_}[3] = fixup_url($self->{url},
                                  apache_sort_by        => $cols{$_}[1],
                                  apache_sort_by_ascend => $sort_ascend);
     }
 
     my %data = ();
 
-    for (my $parent_score = $image->parent_score;
-         $parent_score;
-         $parent_score = $parent_score->next) {
 
-        my $pid = $parent_score->pid;
-        next unless $pid;
 
-        my $mem = $self->pid2mem($pid, \%mem_total);
-        next unless $mem->{size};
 
-        my $worker_score = $parent_score->worker_score;
-        my $record = $self->score2record($pid, $parent_score, $worker_score);
-        @$record{keys %$mem} = values %$mem; # append proc data
 
-        $data{ $record->{pid} } = $record;
+    # in a non-single server mode we want to show the parent process
+    # (so we can tell its memory usage)
+    unless (SINGLE_PROCESS_MODE) {
+
+        # handle the parent case
+        my $ppid = getppid();
+        #warn "ppid: $ppid\n";
+        my $pmem = $self->pid2mem($ppid, \%mem_total);
+        my $prec = {
+                    id        => 0,
+                    pid       => $ppid,
+                    pid_link  => fixup_url($self->{url}, pid => $ppid),
+                    %$pmem,
+                   };
+        $data{ $ppid }{process} = $prec;
+        $data{ $ppid }{workers} = [];
+        # this parent has no worker threads
     }
 
-#        for (my $worker_score = $parent_score->worker_score;
-#             $worker_score;
-#             $worker_score = $parent_score->next_active_worker_score($worker_score)
-#            ) {
-#            use Data::Dumper;
-#            warn "client: ". $worker_score->client . "\n";
-#            warn Dumper 
-#                $self->score2record($parent_score, $worker_score);
-#        }
 
-    # handle the parent case
-    my $ppid = getppid();
-#warn "ppid: $ppid\n";
-    my $pmem = $self->pid2mem($ppid, \%mem_total);
-    my $prec = {
-        count     => 0,
-        pid       => $ppid,
-        pid_link  => fixup_url($self->{url}, pid => $ppid),
-        fsize     => size_string($pmem->{size}),
-        fshare    => size_string($pmem->{share}),
-        fvsize    => size_string($pmem->{vsize}),
-        frss      => size_string($pmem->{rss}),
-    };
+#    for (my $parent_score = $image->parent_score;
+#         $parent_score;
+#         $parent_score = $parent_score->next) {
+#        my $pid = $parent_score->pid;
+## mp1
+#    for (my $i=0; $i<SERVER_LIMIT(); $i++) {
+#        my $parent_score = my $worker_score = $image->servers($i);
+#        my $pid = SINGLE_PROCESS_MODE ? $$ : $image->parent($i)->pid;
+
+    my $i;
+    my $parent_count = 0;
+    for ($i=0; $i < SERVER_LIMIT; $i++) {
+
+        last if SINGLE_PROCESS_MODE && $i > 0;
+
+        my $parent_score = $image->parent_score($i);
+        next unless $parent_score;
+
+        my $pid = SINGLE_PROCESS_MODE ? $$ : $parent_score->pid;
+        next unless $pid;
+
+        my $worker_score = $parent_score->worker_score;
+        next unless $worker_score;
+        #warn "ok\n";
+        use Data::Dumper;
+
+        my $mem = $self->pid2mem($pid, \%mem_total);
+        next unless $mem;
+
+        # good record
+        $parent_count++;
+
+        my %record = %$mem;
+
+        $record{pid} = $pid;
+        $record{id}  = $parent_count;
+
+        $data{ $pid }{process} = \%record;
+
+        if (APACHE_IS_THREADED) {
+            do {
+                my $record = $self->score2record($parent_score, 
+                                                 $worker_score);
+                my $tid = $worker_score->tid;
+                require APR::OS;
+                warn "tid: $$tid\n";
+                $record->{pid}      = $worker_score->thread_num;
+                $record->{pid_link} = fixup_url($self->{url}, worker => 1,
+                                                pid => $pid,
+                                                tid => $record->{pid});
+
+                push @{ $data{$pid}{workers} }, $record;
+                $worker_score = 
+                    $parent_score->next_active_worker_score($worker_score);
+            } while $worker_score
+        }
+        else {
+            push @{ $data{$pid}{workers} },
+                $self->score2record($parent_score, $worker_score);
+        }
+
+    }
 
     my @records = ();
     my $count = 0;
-    my $max_client_len = 9;
-    my $max_pid_len = 0;
+    my $max_client_len  =  9;
+    my $max_vhost_len   =  5;
+    my $max_request_len = 10;
+    my $max_pid_len     =  0;
 
     # sort strings alphabetically, numbers numerically reversed
     my $sort_sub;
+    #warn "sort_field: $sort_field $cols{$sort_field}[2]\n";
+    # XXX: need to sort {thread} as well
     if ($cols{$sort_field}[2] eq 's') {
         $sort_sub = $sort_ascend
-            ? sub { $data{$a}{$sort_field} cmp $data{$b}{$sort_field} }
-            : sub { $data{$b}{$sort_field} cmp $data{$a}{$sort_field} };
+            ? sub { $data{$a}{process}{$sort_field} cmp $data{$b}{process}{$sort_field} }
+            : sub { $data{$b}{process}{$sort_field} cmp $data{$a}{process}{$sort_field} };
     }
     else {
         $sort_sub = $sort_ascend
-            ? sub { $data{$a}{$sort_field} <=> $data{$b}{$sort_field} }
-            : sub { $data{$b}{$sort_field} <=> $data{$a}{$sort_field} };
+            ? sub { $data{$a}{process}{$sort_field} <=> $data{$b}{process}{$sort_field} }
+            : sub { $data{$b}{process}{$sort_field} <=> $data{$a}{process}{$sort_field} };
     }
 
+    # use Data::Dumper;
+    # warn Dumper \%data;
+
+    # it's a pity to waste display space on vhosts if none is configured
+    my $has_vhosts_entries = 0;
     for my $pid (sort $sort_sub keys %data) {
 
-        my $rec = $data{$pid};
+        my $rec = $data{$pid}{process};
         my $lastreq = $rec->{lastreq} ? $rec->{lastreq}/1000 : 0;
+
+        # threads 
+        my @workers = (); 
+        my $tcount = 0;
+        for my $trec (@{ $data{$pid}{workers} || []}) {
+            $tcount++;
+
+            $has_vhosts_entries++ if exists $trec->{vhost} && length $trec->{vhost};
+
+            push @workers, {
+                id        => sprintf("%03d", $tcount),
+                pid       => $trec->{pid},
+                pid_link  => $trec->{pid_link},
+                mode      => $trec->{mode},
+                elapsed   => $trec->{elapsed},
+                felapsed  => format_time($trec->{elapsed}),
+                lastreq   => $lastreq,
+                flastreq  => format_time($lastreq),
+                fserved   => format_counts($trec->{served}),
+                client    => $trec->{client},
+                vhost     => $trec->{vhost},
+                request   => $trec->{request},
+            };
+            $max_client_len = length $trec->{client}
+                if $trec->{client} && length($trec->{client}) > $max_client_len;
+            $max_request_len = length $trec->{request}
+                if $trec->{request} && length($trec->{request}) > $max_request_len;
+            $max_vhost_len = length $trec->{vhost}
+                if exists $trec->{vhost} && length($trec->{vhost}) > $max_vhost_len;
+            # XXX: s/pid/tid/;
+            $max_pid_len = length $pid if length($pid) > $max_pid_len;
+        }
 
         # print sorted
         push @records, {
-            count     => ++$count,
+            id        => sprintf("%3d", $rec->{id}),
             pid       => $rec->{pid},
             pid_link  => $rec->{pid_link},
             mode      => $rec->{mode},
@@ -590,16 +851,28 @@ sub data_apache {
             fvsize    => size_string($rec->{vsize}),
             frss      => size_string($rec->{rss}),
             client    => $rec->{client},
+            vhost     => $rec->{vhost},
             request   => $rec->{request},
+            workers   => \@workers,
         };
+
+
+        $has_vhosts_entries++ if exists $rec->{vhost} && length $rec->{vhost};
         $max_client_len = length $rec->{client}
-            if $rec->{client} && length $rec->{client}  > $max_client_len;
-        $max_pid_len = length $pid
-            if length $pid  > $max_pid_len;
+            if $rec->{client} && length($rec->{client}) > $max_client_len;
+        $max_request_len = length $rec->{request}
+            if $rec->{request} && length($rec->{request}) > $max_request_len;
+        $max_vhost_len = length $rec->{vhost}
+            if $rec->{vhost} && length($rec->{vhost}) > $max_vhost_len;
+        $max_pid_len = length $pid if length($pid) > $max_pid_len;
     }
 
     $cols{client}[0] = $max_client_len;
+    $cols{request}[0] = $max_request_len;
+    $cols{vhost}[0]  = $max_vhost_len;
     $cols{pid}[0]    = $max_pid_len;
+
+    # XXX: THREADED Apache doesn't have shared memory???!!!
 
     # Summary of memory usage
     #  Note how do I calculate the approximate real usage of the memory:
@@ -612,15 +885,19 @@ sub data_apache {
         fsize   => size_string($mem_total{size}),
         shared  => ($mem_total{real} + $mem_total{max_shared})/1000,
         fshared => size_string($mem_total{real} + $mem_total{max_shared}),
-
     };
+
+    # remove the vhost col if there are no vhosts to display
+    @cols_sorted = grep { $_ ne 'vhost' } @cols_sorted 
+        unless $has_vhosts_entries;
 
     return {
         total       => $total,
-        prec        => $prec,
         records     => \@records,
         cols_sorted => \@cols_sorted,
         cols        => \%cols,
+        has_vhosts_entries  => $has_vhosts_entries,
+        threaded    => (APACHE_IS_THREADED ? 1 : 0),
     };
 }
 
@@ -654,7 +931,7 @@ sub pid2mem {
 }
 
 sub score2record {
-    my($self, $pid, $parent_score, $worker_score) = @_;
+    my($self, $parent_score, $worker_score) = @_;
 
     # get absolute start and stop times in usecs since epoch
     my ($start_sec, $start_usec_delta) = $worker_score->start_time;
@@ -670,20 +947,21 @@ sub score2record {
                                    [Time::HiRes::gettimeofday()])
         : 0;
 
+    my $vhost = HAS_VHOSTS ? $worker_score->vhost : '';
+
     return {
-        pid        => $pid,
-        pid_link   => fixup_url($self->{url}, pid => $pid),
         mode       => $worker_score->status,
         elapsed    => $elapsed,
         lastreq    => $worker_score->req_time || 0,
         served     => $worker_score->my_access_count,
         client     => $worker_score->client,
+        vhost      => $vhost,
         request    => $worker_score->request,
     };
 }
 
 sub tmpl_apache {
-
+#return \'';
     return \ <<'EOT';
 <hr>
 <pre>
@@ -695,7 +973,7 @@ sub tmpl_apache {
   "<b>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;";
   width     = 0;
   label     = 1;
-  sort_link = 2;
+  sort_link = 3;
   FOR key = cols_sorted;
       col = cols.$key;
       times = col.$width - col.$label.length;
@@ -704,48 +982,103 @@ sub tmpl_apache {
   END;
   "</b>\n";
 
-
   # records
-  max_pid_len = cols.pid.$width;
-  max_client_len = cols.client.$width;
+  max_pid_len     = cols.pid.$width;
+  max_client_len  = cols.client.$width;
+  max_vhost_len   = cols.vhost.$width;
+  max_request_len = cols.request.$width;
 
   # parent rec
-  spacing_len = cols.mode.$width + cols.elapsed.$width + cols.lastreq.$width + cols.served.$width + 8;
+  spacing_len = cols.mode.$width + cols.elapsed.$width + cols.lastreq.$width +
+                cols.served.$width + max_client_len + max_vhost_len + 
+                max_request_len + 11;
+
   USE format_parent =
-      format("par: %s %${spacing_len}s %5s %5s %5s %5s\n");
+      format("%s: %s %5s %5s %5s %5s %${spacing_len}s");
 
-  times = max_pid_len - prec.pid.length;
-  spacing = times > 0 ? space.repeat(times) : "";
-  pid_link = "$spacing<a href=\"${prec.pid_link}\">${prec.pid}</a>";
+  BLOCK present_parent_record;
+      times = max_pid_len - prec.pid.length;
+      spacing = times > 0 ? space.repeat(times) : "";
+      pid_link = "$spacing<a href=\"${prec.pid_link}\">${prec.pid}</a>";
 
-  format_parent(pid_link, space, prec.fsize, prec.fshare, prec.fvsize, prec.frss);
+      format_parent(prec.id, pid_link, prec.fsize, prec.fshare, prec.fvsize,
+                    prec.frss, space);
+  END;
 
+  fvhost = has_vhosts_entries 
+         ? " %${max_vhost_len}.${max_vhost_len}s" 
+         : "%0.0s";
   USE format_child =
-      format("%3d: %s %1s %s %s %4s %5s %5s %5s %5s %${max_client_len}.${max_client_len}s %.64s");
-  FOR rec = records;
+      format("%s: %s %5s %5s %5s %5s %1s %s %s %4s %${max_client_len}.${max_client_len}s${fvhost} %s%s");
+
+  # if prec is passed, that means that the parent process is also a worker
+  # so present the process data on the same line with the worker data
+  BLOCK present_worker_record;
+      IF prec;
+          wrec.id       = prec.id;
+          wrec.pid      = prec.pid;
+          wrec.pid_link = prec.pid_link;
+          wrec.fsize    = prec.fsize;
+          wrec.fshare   = prec.fshare;
+          wrec.fvsize   = prec.fvsize;
+          wrec.frss     = prec.frss;
+      END;
 
       # alert on workers that are still at work for a single request
       # for more than 15 secs
-      elapsed_class = rec.elapsed > 15 ? "alert" : "normal";
-      rec.felapsed = "<span class=\"$elapsed_class\">${rec.felapsed}</span>";
+      elapsed_class = wrec.elapsed > 15 ? "alert" : "normal";
+      wrec.felapsed = "<span class=\"$elapsed_class\">${wrec.felapsed}</span>";
 
       # alert on workers that worked for a single request for more
       # than 15 secs
-      lastreq_class = rec.lastreq > 15 ? "alert" : "normal";
-      rec.flastreq = "<span class=\"$lastreq_class\">${rec.flastreq}</span>";
+      lastreq_class = wrec.lastreq > 15 ? "alert" : "normal";
+      wrec.flastreq = "<span class=\"$lastreq_class\">${wrec.flastreq}</span>";
 
       # escape HTML in request URI to prevent cross-site scripting attack
-      rec.frequest = HTML.escape(rec.request);
+      wrec.frequest = HTML.escape(wrec.request);
+
+      # line fill spacing (needed for coloured areas)
+      times = max_request_len - wrec.frequest.length;
+      line_fill = times > 0 ? space.repeat(times) : "";
 
       # pid linked
-      times = max_pid_len - rec.pid.length;
+      times = max_pid_len - wrec.pid.length;
       spacing = times > 0 ? space.repeat(times) : "";
-      pid_link = "$spacing<a href=\"${rec.pid_link}\">${rec.pid}</a>";
+      pid_link = "$spacing<a href=\"${wrec.pid_link}\">${wrec.pid}</a>";
 
-      item_class = loop.count % 2 ? "item_even" : "item_odd";
-      "<span class=\"$item_class\">";
-      format_child(rec.count, pid_link, rec.mode, rec.felapsed, rec.flastreq, rec.fserved, rec.fsize, rec.fshare, rec.fvsize, rec.frss, rec.client, rec.frequest);
-      "</span>\n";
+      format_child(wrec.id, pid_link, wrec.fsize, wrec.fshare, wrec.fvsize,
+                   wrec.frss, wrec.mode, wrec.felapsed, wrec.flastreq,
+                   wrec.fserved, wrec.client, wrec.vhost, wrec.frequest, line_fill);
+  END;
+
+
+  IF threaded;
+      FOR rec = records;
+          item_class = loop.count % 2 ? "item_odd" : "item_even";
+          "<span class=\"$item_class\">";
+          IF rec.workers.size;
+              PROCESS present_parent_record prec = rec;
+              "\n";
+              FOR wrec = rec.workers;
+                  PROCESS present_worker_record prec = 0, wrec = wrec;
+                  "\n";
+              END;
+          ELSE;
+              PROCESS present_parent_record prec = rec;
+          END;
+          "</span>\n";
+      END;
+  ELSE;
+      FOR rec = records;
+          item_class = loop.count % 2 ? "item_odd" : "item_even";
+          "<span class=\"$item_class\">";
+          IF rec.workers.size;
+              PROCESS present_worker_record prec = rec, wrec => rec.workers.0;
+          ELSE;
+              PROCESS present_parent_record prec = rec;
+          END;
+          "</span>\n";
+      END;
   END;
 
   # total apache proc memory usage
@@ -764,6 +1097,17 @@ EOT
 sub data_procs {
     my $self = shift;
 
+#    for (1..10) {
+#        my $pid_link  = fixup_url($self->{url}, pid => int rand 1000);
+#    }
+
+
+#    return {};
+
+
+    
+    
+    #{
     # XXX:
     $Apache::VMonitor::PROC_REGEX = join "\|", qw(httpd wine xemacs);
 
@@ -778,7 +1122,7 @@ sub data_procs {
     my($proclist, $entries) = $gtop->proclist;
 
     my %procs = ();
-    for my $pid ( @$entries ){
+    for my $pid ( @$entries ) {
         my $cmd = $gtop->proc_state($pid)->cmd;
         push @{ $procs{$cmd} }, $pid
             if $cmd =~ /$Apache::VMonitor::PROC_REGEX/o;
@@ -793,6 +1137,7 @@ sub data_procs {
         uid => 3,
     );
     my @recs = ();
+
     my $cat_id = 0;
     for my $cat (sort keys %procs) {
 
@@ -805,6 +1150,14 @@ sub data_procs {
             my $mem   = $gtop->proc_mem($pid);
             my $tty   = $uid->tty;
             $tty = ' ' if $tty == -1;
+
+            #my $handle;
+            #my $count = Devel::Leak::NoteSV($handle);
+            #{
+             #   my $pid_link  = fixup_url($self->{url}, pid => $pid);
+            #}
+            #Devel::Leak::CheckSV($handle);
+
 
             push @recs, {
                 cat_id    => $cat_id,
@@ -831,17 +1184,17 @@ sub data_procs {
             $max_len{uid} = $len if $len > $max_len{uid};
         }
     }
+    #Devel::Leak::CheckSV($handle);
+    #}
 
     return {
         max_len => \%max_len,
         records => \@recs,
     };
-
-
 }
 
 sub tmpl_procs {
-
+#return \ '';
     return \ <<'EOT';
 <hr>
 <pre>
@@ -859,7 +1212,7 @@ sub tmpl_procs {
       spacing = times > 0 ? space.repeat(times) : "";
       pid_link = "$spacing<a href=\"${rec.pid_link}\">${rec.pid}</a>";
 
-      item_class = rec.cat_id % 2 ? "item_even" : "item_odd";
+      item_class = rec.cat_id % 2 ? "item_odd" : "item_even";
       "<span class=\"$item_class\">";
       format_procs(rec.count, pid_link, rec.uid, rec.fsize, rec.fshare, rec.fvsize, rec.frss, rec.tty, rec.state, rec.cmd);
       "</span>\n";
@@ -875,14 +1228,19 @@ EOT
 
 sub data_apache_single {
     my $self = shift;
+    #return {};
 
-    require Time::HiRes;
+    # XXX:
+    # worker == 0, no worker data to display
+    # consider showing workers under control of this pid
 
-    # XXX, how do we make it work for mp1?
-    require Apache::Scoreboard;
-    die "Apache::Scoreboard 2.0 or higher is wanted, " .
-        "this is only version $Apache::Scoreboard::VERSION"
-            unless $Apache::Scoreboard::VERSION >= 2.0;
+    # XXX:
+    # tid != 0, lookup worker data for this specific tid
+
+    if (MP2 && $Apache::Scoreboard::VERSION < 2.0) {
+        die "Apache::Scoreboard 2.0 or higher is wanted, " .
+            "this is only version $Apache::Scoreboard::VERSION";
+    }
 
     my $pid = $self->{pid};
     my $data;
@@ -901,7 +1259,7 @@ sub data_apache_single {
     ### memory usage
     my $mem = $self->pid2mem($pid);
     # the process might be dead already by the time you click on it.
-    unless ($mem->{size}) {
+    unless ($mem) {
         $data->{proc_is_dead} = 1;
         return $data;
     }
@@ -917,8 +1275,8 @@ sub data_apache_single {
     };
 
     if (my $parent_score = $self->pid2parent_score($pid)) {
-        my $worker_score = $parent_score->worker_score;
-        my $rec = $self->score2record($pid, $parent_score, $worker_score);
+        my $worker_score = MP2 ? $parent_score->worker_score : $parent_score;
+        my $rec = $self->score2record($parent_score, $worker_score);
         my $lastreq = $rec->{lastreq} ? $rec->{lastreq}/1000 : 0;
         $data->{rec} = {
             is_httpd_proc => 1,
@@ -930,6 +1288,7 @@ sub data_apache_single {
             flastreq  => format_time($lastreq),
             fserved   => format_counts($rec->{served}),
             client    => $rec->{client},
+            vhost     => $rec->{vhost},
             request   => $rec->{request},
             access_count     => $worker_score->access_count,
             my_access_count  => $worker_score->my_access_count,
@@ -1031,17 +1390,16 @@ sub data_apache_single {
 sub pid2parent_score {
     my($self, $pid) = @_;
 
+    my $image = $self->scoreboard_image();
     if (MP2) {
-        my $image = Apache::Scoreboard->image($self->{r}->pool);
         my $parent_idx = $image->parent_idx_by_pid($pid);
         return $parent_idx == -1 ? undef : $image->parent_score($parent_idx);
     }
     else {
         # XXX: mp1 untested
-        my $image = Apache::Scoreboard->image();
         my $i;
         my $is_httpd_child = 0;
-        for ($i=0; $i<Apache::Constants::HARD_SERVER_LIMIT; $i++) {
+        for ($i = 0; $i < SERVER_LIMIT; $i++) {
             $is_httpd_child = 1, last if $pid == $image->parent($i)->pid;
         }
         $i = -1 if $pid == getppid();
@@ -1053,7 +1411,7 @@ sub pid2parent_score {
 
 
 sub tmpl_apache_single {
-
+#return \'';
     return \ <<'EOT';
 <hr>
 [%-
@@ -1162,6 +1520,9 @@ sub tmpl_apache_single {
   format_item("", "");
 
   format_item("Client IP or DNS", rec.client);
+
+  format_item("Virtual Host", rec.vhost) IF rec.vhost.length;
+
   # escape HTML in request URI to prevent cross-site scripting attack
   rec.frequest = HTML.escape(rec.request);
   format_item("Request (first 64 chars)", rec.frequest);
@@ -1187,6 +1548,7 @@ EOT
 
 sub data_fs_usage {
     my $self = shift;
+    #return {};
 
     my($mountlist, $entries) = $gtop->mountlist(1);
     my $fs_number = $mountlist->number;
@@ -1247,6 +1609,7 @@ sub data_fs_usage {
 }
 
 sub tmpl_fs_usage {
+    #return \ '';
     return \ <<'EOT';
 <hr>
 <pre>
@@ -1262,7 +1625,7 @@ sub tmpl_fs_usage {
   format_files  = "       %7d %7d %4d%%";
   format_fs     = "%-${max_fs_name_len}s ";
 
-  FOREACH item = items;
+  FOR item = items;
       # visual alert on filesystems of 90% usage!
       IF item.blocks.usage >= 90 AND item.files.usage >= 90;
           USE format_item = format("<b><font color=\"#ff0000\">$format_fs $format_blocks $format_files</font></b>\n");
@@ -1297,6 +1660,7 @@ EOT
 
 sub data_mount {
     my $self = shift;
+    #return {};
 
     my @records = qw(devname mountdir type);
     my($mountlist, $entries) = $gtop->mountlist(1);
@@ -1323,7 +1687,7 @@ sub data_mount {
 }
 
 sub tmpl_mount {
-
+#return \'';
     return \ <<'EOT';
 <hr>
 <pre>
@@ -1507,6 +1871,7 @@ Reports the utilization of all mounted filesystems:
 
 sub data_verbose {
     my $self = shift;
+    #return {};
 
     return {
         abbr => \%Apache::VMonitor::abbreviations,
@@ -1516,7 +1881,7 @@ sub data_verbose {
 }
 
 sub tmpl_verbose {
-
+#return \'';
     return \ <<'EOT';
 [%-
 

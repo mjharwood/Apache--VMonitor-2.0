@@ -7,6 +7,8 @@
     PerlWarn      On
 </IfDefine>
 
+#PerlSwitches -Dm
+
 ##### DEVMODE: Remove in production ###
 PerlModule Apache::Reload
 PerlInitHandler Apache::Reload
@@ -14,15 +16,5 @@ PerlSetVar ReloadAll Off
 PerlSetVar ReloadModules "Apache::VMonitor"
 #PerlSetVar ReloadDebug On
 
-PerlModule Apache::VMonitor
-<Location /vmonitor>
-    SetHandler perl-script
-    PerlResponseHandler Apache::VMonitor
-</Location>
 
-<IfModule mod_status.c>
-  ExtendedStatus On
-  <Location /server-status>
-      SetHandler server-status
-  </Location>
-</IfModule>
+

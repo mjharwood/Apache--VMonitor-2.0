@@ -5,12 +5,23 @@ use Apache::Test;
 use Apache::TestUtil;
 use Apache::TestRequest;
 
-plan tests => 2;
+my $config = Apache::Test::config();
+my $path = Apache::TestRequest::module2path('TestDirective::perlrequire');
 
-my $location = "/vmonitor";
-my $str = GET_BODY $location;
+my @vhosts = qw(default vhost1 vhost2);
 
-ok $str;
+plan tests => 2 * scalar @vhosts;
 
-ok t_cmp(qr/Apache::VMonitor/, $str);
+for my $name (@vhosts) {
+
+    Apache::TestRequest::module($name);
+    my $hostport = Apache::TestRequest::hostport($config);
+    t_debug("connecting to $hostport");
+    my $location = "http://$hostport/vmonitor";
+    my $str = GET_BODY $location;
+
+    ok $str;
+
+    ok t_cmp(qr/Apache::VMonitor/, $str, $hostport);
+}
 

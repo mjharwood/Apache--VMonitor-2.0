@@ -25,7 +25,7 @@ use constant MIN_MAXCLIENTS => 5;
 sub new_test_config {
     my $self = shift;
 
-    $self->{conf_opts}->{maxclients} = MIN_MAXCLIENTS;
+    $self->{conf_opts}->{maxclients} ||= MIN_MAXCLIENTS;
 
     return $self->SUPER::new_test_config;
 }
