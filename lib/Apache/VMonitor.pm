@@ -67,6 +67,7 @@ sub handler : method {
     $r->content_type('text/html');
 
     my $self = $class->new(
+        r     => $r,
         tt    => $tt,
         gtop  => $gtop,
         cfg   => \%cfg,
@@ -92,7 +93,7 @@ sub generate {
     my @items = 'start_html';
 
 # XXX: fixme
-my @sects = qw(system fs_usage mount);
+my @sects = qw(system apache fs_usage mount);
 
     $cfg->{$_} && push @items, $_ for (@sects);
     push @items, qw(nav_bar end_html);
@@ -162,6 +163,15 @@ sub tmpl_start_html {
     padding: 3px;
     width: 99%;
   }
+  div.even_item {
+    background-color: #dddddd;
+    color: #000000;
+  }
+  div.odd_item {
+    background-color: #ffffff;
+    color: #000000;
+  }
+
   </style>
 </head>
 <body bgcolor="white">
@@ -169,15 +179,17 @@ sub tmpl_start_html {
 <b><font size=+1 color="#339966">Apache::VMonitor</font></b>
 &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
 Refresh rate:&nbsp;&nbsp;
-[% IF rates.size %]
-    [%- FOREACH item = rates -%]
-        [%- IF item.1 -%]
-            <a href="[% item.1 %]">[ [% item.0 %] ]</a>&nbsp;&nbsp;
-        [%- ELSE -%]
-            [ [% item.0 %] ]&nbsp;&nbsp;
-        [%- END -%]
-    [%- END -%]
-[% END %]
+[%-
+  IF rates.size;
+    FOREACH item = rates;
+      IF item.1;
+        "<a href=\"${item.1}\">[ ${item.0} ]</a>&nbsp;&nbsp;";
+      ELSE;
+        "[ ${item.0} ]&nbsp;&nbsp;";
+      END;
+    END;
+  END;
+-%]
 <br>
 EOT
 
@@ -389,6 +401,261 @@ EOT
 
 
 
+### apache ###
+
+sub data_apache {
+    my $self = shift;
+
+    # XXX, how do we make it work for mp1?
+    require Apache::Scoreboard;
+    die "Apache::Scoreboard 2.0 or higher is wanted, " .
+        "this is only version $Apache::Scoreboard::VERSION"
+            unless $Apache::Scoreboard::VERSION >= 2.0;
+
+    my $data;
+
+    my $image = Apache::Scoreboard->image($self->{r}->pool);
+
+    # init the stats hash
+    my %total = map {$_ => 0} qw(size real max_shared);
+
+    # calculate the max_length of the process - note that we cannot
+    # just make this field "%6s" because of the HTML with hyperlink
+    # that has to be stuffed in.
+    my $max_pid_len = 0;
+    for (my $parent_score = $image->parent_score;
+         $parent_score;
+         $parent_score = $parent_score->next) {
+        my $pid = $parent_score->pid;
+        warn "pid = $pid\n";
+        $max_pid_len = length $pid if length $pid  > $max_pid_len;
+
+        for (my $worker_score = $parent_score->worker_score;
+             $worker_score;
+             $worker_score = $parent_score->next_live_worker_score($worker_score)
+            ) {
+            my $tid = ${ $worker_score->tid };
+            warn "worker tid = $tid\n";
+            my $length = length $tid;
+            $max_pid_len = length $tid if length $tid  > $max_pid_len;
+        }
+    }
+
+    my %cols = (
+                     # WIDTH       # LABEL                   # SORT
+        pid     => [$max_pid_len, 'PID'                     , 'd'],
+        mode    => [           1, 'M'                       , 's'],
+        elapsed => [           7, 'Elapsed'                 , 'd'],
+        lastreq => [           7, 'LastReq'                 , 'd'],
+        served  => [           4, 'Srvd'                    , 'd'],
+        size    => [           5, 'Size'                    , 'd'],
+        share   => [           5, 'Share'                   , 'd'],
+        vsize   => [           5, 'VSize'                   , 'd'],
+        rss     => [           5, 'Rss'                     , 'd'],
+        client  => [          12, 'Client'                  , 's'],
+        request => [          27, 'Request (first 64 chars)', 's'],
+   );
+
+    my @cols = qw(pid mode elapsed lastreq served size share vsize rss
+                  client request);
+
+    for (@cols) {
+        push @{ $cols{$_} }, fixup_url($self->{url}, 'sort_by', $cols{$_}[1]);
+    }
+
+    $data->{cols_sorted} = \@cols;
+    $data->{cols}        = \%cols;
+
+#    my $parent_format = "par: %${max_pid_len}s %1s %7s %7s %4s %5s %5s %5s %5s\n\n";
+#    my $child_format  = "%3d: %${max_pid_len}s %1s %7s %7s %4s %5s %5s %5s %5s %15.15s %.64s \n";	
+#    my %data = ();
+
+#    my $i=-1;
+#    my $j=-1;
+#    for (my $parent_score = $image->parent_score;
+#         $parent_score;
+#         $parent_score = $parent_score->next) {
+
+##        my $pid = ($i==-1) ? getppid() : ($parent_score ? $parent_score->pid : undef);
+#        my $pid = $parent_score->pid;
+#        last unless $pid;
+#        my $proc_mem  = $gtop->proc_mem($pid);
+#        my $size      = $proc_mem->size($pid);
+
+#        # workarond for Apache::Scoreboard (or underlying C code) bug,
+#        # it reports processes that are already dead. So we easily
+#        # skip them, since their size is zero!
+#        next unless $size;
+
+#        my $share = $proc_mem->share($pid);
+#        my $vsize = $proc_mem->vsize($pid);
+#        my $rss   = $proc_mem->rss($pid);
+
+#        #  total http size update
+#        $total{size}  += $size;
+#        $total{real}  += $size-$share;
+#        $total{max_shared} = $share if $total{max_shared} < $share;
+
+
+#        for (my $worker_score = $parent_score->worker_score;
+#             $worker_score;
+#             $worker_score = $parent_score->next_active_worker_score($worker_score)
+#            ) {
+
+#            # get absolute start and stop times in usecs since epoch
+#            my ($start_sec,$start_usec_delta) = $worker_score->start_time;
+#            my $start_usec = $start_sec*1000000+$start_usec_delta;
+    
+#            my ($stop_sec, $stop_usec_delta) =  $worker_score->stop_time;
+#            my $stop_usec = $stop_sec*1000000+$stop_usec_delta;
+    
+#            # measure running time till now if not idle
+#            my $elapsed = $stop_usec < $start_usec
+#                ? Time::HiRes::tv_interval
+#                    ([$start_sec,$start_usec_delta], [Time::HiRes::gettimeofday])
+#                : 0;
+    
+#            # link the pid
+#            my $length   = length $pid;
+#            my $stuffing = $max_pid_len - $length;
+#            my $spacing  = "&nbsp;" x $stuffing;
+#            my $pid_linked = qq{$spacing<A HREF="@{[get_url(pid => $pid)]}">$pid</A>};
+    
+#            # handle the parent case
+#            if ($j == -1) {
+#                $j++;
+#                printf $parent_format,
+#                    $pid_linked,
+#                    $worker_score->status,
+#                    '',
+#                    '',
+#                    '',
+#                    Apache::Util::size_string($size),
+#                    Apache::Util::size_string($share),
+#                    Apache::Util::size_string($vsize),
+#                    Apache::Util::size_string($rss);
+#            } else {
+#                push @{ $data{$pid} }, 
+#                    {
+#                     pid        => $pid,
+#                     pid_linked => $pid_linked,
+#                     mode       => $worker_score->status,
+#                     elapsed    => $elapsed,
+#                     lastreq    => $worker_score->req_time,
+#                     served     => $worker_score->my_access_count,
+#                     size       => $size,
+#                     share      => $share,
+#                     vsize      => $vsize,
+#                     rss        => $rss,
+#                     client     => $worker_score->client,
+#                     request    => $worker_score->request,
+#                    };
+#            }
+#        } # end of for (my $i=0...
+#    } # end of for (my $i=0...
+
+#    # print the httpd processes sorted 
+#    my $sort_field = $config{SORT_BY} || 'size';
+#    $sort_field = 'size' unless $cols{$sort_field};
+#    my $count = 0;
+
+##use Data::Dumper;
+##warn "sort field: $sort_field";
+##warn Dumper $cols{$sort_field};
+#    # sort strings alphabetically, numbers numerically reversed
+##    for ($cols{$sort_field}[2] eq 's' 
+##         ? (sort {$data{$a}{$sort_field} cmp $data{$b}{$sort_field} } keys %data)
+##         : (sort {$data{$b}{$sort_field} <=> $data{$a}{$sort_field} } keys %data)
+##        ) {
+#    for my $pid (keys %data) {
+#        for my $rec (@{ $data{$pid} }) {
+
+#	# setting visual alert for cur_req_elapsed_run hardcoded to 15
+#	# secs so far
+#        my $elapsed = $rec->{elapsed};
+#        $elapsed = $elapsed > 15
+#            ? blinking(sprintf qq{<B><FONT color="red">%7s</FONT></B>},
+#                       format_time($elapsed))
+#            : format_time($elapsed);
+
+#	# setting visual alert for last_req_len hardcoded to 15secs so
+#	# far
+#        my $req_time = $rec->{lastreq}/1000;
+#        $req_time = $req_time > 15
+#            ? sprintf qq{<B><FONT color="red">%7s</FONT></B>},
+#                format_time($req_time)
+#            : format_time($req_time);
+
+#        # print sorted
+#	printf $child_format,
+#            ++$count,
+#            $rec->{pid_linked},
+#            $rec->{mode},
+#            $elapsed,
+#            $req_time,
+#            format_counts($rec->{served}),
+#            Apache::Util::size_string($rec->{size}),
+#            Apache::Util::size_string($rec->{share}),
+#            Apache::Util::size_string($rec->{vsize}),
+#            Apache::Util::size_string($rec->{rss}),
+#            $rec->{client},
+#            $rec->{request};
+#    }
+#    }
+
+#    ### Summary of memory usage
+#    printf "\n<B>Total:     %5dK (%s) size, %6dK (%s) approx real size (-shared)</B>\n",
+#      $total{size}/1000,
+#      Apache::Util::size_string($total{size}), 
+#      ($total{real} + $total{max_shared})/1000,
+#      Apache::Util::size_string($total{real} + $total{max_shared});
+
+#    #  Note how do I calculate the approximate real usage of the memory:
+#    #  1. For each process sum up the difference between shared and system
+#    #  memory 2. Now if we add the share size of the process with maximum
+#    #  shared memory, we will get all the memory that actually is being
+#    #  used by all httpd processes but the parent process.
+
+#    print "<HR>";
+
+
+    return $data;
+}
+
+
+
+sub tmpl_apache {
+
+    return \ <<'EOT';
+<hr>
+<pre>
+[%-
+
+
+  # header
+  space = "&nbsp;";
+  "<b>";
+  FOR key = cols_sorted;
+      col = cols.$key;
+      times = col.0 - col.1.length;
+      spacing = space.repeat(times);
+      "$spacing<a href=\"${col.3}\">${col.1}</a>";
+  END;
+  "</b>";
+
+  "<div class=\"even_item\">foo bar</div>";
+  "<div class=\"odd_item\">foo bar</div>";
+  "<div class=\"even_item\">foo bar</div>";
+
+
+-%]
+</pre>
+EOT
+
+}
+
+
+
 
 ### fs_usage ###
 
@@ -505,15 +772,19 @@ EOT
 sub data_mount {
     my $self = shift;
 
+    my @records = qw(devname mountdir type);
     my($mountlist, $entries) = $gtop->mountlist(1);
-    my $fs_number = $mountlist->number;
 
+    my $fs_number = $mountlist->number;
+    my %len = map { $_ => 0 } @records;
     my @items = ();
     for (my $i=0; $i < $fs_number; $i++) {
         push @items, {
-           devname  => $entries->devname($i),
-           mountdir => $entries->mountdir($i),
-           type     => $entries->type($i),
+            map {
+                my $val = $entries->$_($i);
+                $len{$_} = length $val if length $val > $len{$_};
+                $_ => $val;
+            } @records
         };
     }
 
@@ -521,6 +792,7 @@ sub data_mount {
     @items = sort { $a->{devname} cmp $b->{devname} } @items;
     return {
         items => \@items,
+        len   => \%len,
     };
 }
 
@@ -530,11 +802,13 @@ sub tmpl_mount {
 <hr>
 <pre>
 [%-
-  USE format_header = format("<b>%-30s %-30s %-10s</b>\n");
+  header = "%-${len.devname}s   %-${len.mountdir}s   %-${len.type}s";
+  USE format_header = format("<b>$header</b>\n");
 
   format_header("DEVICE", "MOUNTED ON", "FS TYPE");
 
-  USE format_item = format("%-30s %-30s %-10s\n");
+  USE format_item =
+      format("$header\n");
   FOREACH item = items;
       format_item(item.devname,
                   item.mountdir,
