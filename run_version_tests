@@ -1,0 +1,226 @@
+#!/usr/bin/perl
+
+my $lib = "/home/stas/bin/run_check-lib.pl";
+require $lib;
+run_check(*DATA);
+
+__DATA__
+# need to test all these combinations
+
+#### mp2 prefork DSO ###
+
+make clean && /usr/bin/env CCFLAGS="-g" perl-5.6.1 Makefile.PL -apxs /home/stas/httpd/prefork/bin/apxs -libmodperl /home/stas/httpd/prefork/modules/mod_perl-5.6.1.so -port select MOD_PERL=2 && make && make test && make install
+
+
+
+
+make clean && /usr/bin/env CCFLAGS="-g" perl-5.6.2 Makefile.PL -apxs /home/stas/httpd/prefork/bin/apxs -libmodperl /home/stas/httpd/prefork/modules/mod_perl-5.6.2.so -port select MOD_PERL=2 && make && make test && make install
+
+make clean && /usr/bin/env CCFLAGS="-g" perl-5.6.2-perlio Makefile.PL -apxs /home/stas/httpd/prefork/bin/apxs -libmodperl /home/stas/httpd/prefork/modules/mod_perl-5.6.2-perlio.so -port select MOD_PERL=2 && make && make test && make install
+
+make clean && /usr/bin/env CCFLAGS="-g" perl-5.6.2-ithread Makefile.PL -apxs /home/stas/httpd/prefork/bin/apxs -libmodperl /home/stas/httpd/prefork/modules/mod_perl-5.6.2-ithread.so -port select  MOD_PERL=2 && make && make test && make install
+
+
+
+
+make clean && /usr/bin/env CCFLAGS="-g" perl-5.8.0 Makefile.PL -apxs /home/stas/httpd/prefork/bin/apxs -libmodperl mod_perl-5.8.0.so -port select MOD_PERL=2 && make && make test && make install
+
+make clean && /usr/bin/env CCFLAGS="-g" perl-5.8.0-ithread Makefile.PL -apxs /home/stas/httpd/prefork/bin/apxs -libmodperl mod_perl-5.8.0-ithread.so -port select MOD_PERL=2 && make && make test && make install
+
+
+
+
+make clean && /usr/bin/env CCFLAGS="-g" perl-5.8.1 Makefile.PL -apxs /home/stas/httpd/prefork/bin/apxs -libmodperl mod_perl-5.8.1.so -port select MOD_PERL=2 && make && make test && make install
+
+make clean && /usr/bin/env CCFLAGS="-g" perl-5.8.1-ithread Makefile.PL -apxs /home/stas/httpd/prefork/bin/apxs -libmodperl mod_perl-5.8.1-ithread.so -port select MOD_PERL=2 && make && make test && make install
+
+
+
+
+make clean && /usr/bin/env CCFLAGS="-g" perl-5.8.2 Makefile.PL -apxs /home/stas/httpd/prefork/bin/apxs -libmodperl mod_perl-5.8.2.so -port select MOD_PERL=2 && make && make test && make install
+
+make clean && /usr/bin/env CCFLAGS="-g" perl-5.8.2-ithread Makefile.PL -apxs /home/stas/httpd/prefork/bin/apxs -libmodperl mod_perl-5.8.2-ithread.so -port select MOD_PERL=2 && make && make test && make install
+
+
+
+
+make clean && /usr/bin/env CCFLAGS="-g" perl-5.8.3 Makefile.PL -apxs /home/stas/httpd/prefork/bin/apxs -libmodperl mod_perl-5.8.3.so -port select MOD_PERL=2 && make && make test && make install
+
+make clean && /usr/bin/env CCFLAGS="-g" perl-5.8.3-ithread Makefile.PL -apxs /home/stas/httpd/prefork/bin/apxs -libmodperl mod_perl-5.8.3-ithread.so -port select MOD_PERL=2 && make && make test && make install
+
+
+
+
+
+make clean && /usr/bin/env CCFLAGS="-g" perl-5.8.4 Makefile.PL -apxs /home/stas/httpd/prefork/bin/apxs -libmodperl mod_perl-5.8.4.so -port select MOD_PERL=2 && make && make test && make install
+
+make clean && /usr/bin/env CCFLAGS="-g" perl-5.8.4-ithread Makefile.PL -apxs /home/stas/httpd/prefork/bin/apxs -libmodperl mod_perl-5.8.4-ithread.so -port select MOD_PERL=2 && make && make test && make install
+
+
+
+
+
+
+make clean && /usr/bin/env CCFLAGS="-g" perl-5.8.5 Makefile.PL -apxs /home/stas/httpd/prefork/bin/apxs -libmodperl mod_perl-5.8.5.so -port select MOD_PERL=2 && make && make test && make install
+
+make clean && /usr/bin/env CCFLAGS="-g" perl-5.8.5-ithread Makefile.PL -apxs /home/stas/httpd/prefork/bin/apxs -libmodperl mod_perl-5.8.5-ithread.so -port select MOD_PERL=2 && make && make test && make install
+
+
+
+
+
+make clean && /usr/bin/env CCFLAGS="-g" perl-blead Makefile.PL -apxs /home/stas/httpd/prefork/bin/apxs -libmodperl mod_perl-blead.so -port select MOD_PERL=2 && make && make test && make install
+
+make clean && /usr/bin/env CCFLAGS="-g" perl-blead-ithread Makefile.PL -apxs /home/stas/httpd/prefork/bin/apxs -libmodperl mod_perl-blead-ithread.so -port select MOD_PERL=2 && make && make test && make install
+
+#### mp2 worker DSO ###
+
+make clean && /usr/bin/env CCFLAGS="-g" perl-5.8.1-ithread Makefile.PL -apxs /home/stas/httpd/worker/bin/apxs -libmodperl mod_perl-5.8.1-ithread.so -port select MOD_PERL=2 && make && make test && make install
+
+
+
+make clean && /usr/bin/env CCFLAGS="-g" perl-5.8.2-ithread Makefile.PL -apxs /home/stas/httpd/worker/bin/apxs -libmodperl mod_perl-5.8.2-ithread.so -port select MOD_PERL=2 && make && make test && make install
+
+
+
+make clean && /usr/bin/env CCFLAGS="-g" perl-5.8.3-ithread Makefile.PL -apxs /home/stas/httpd/worker/bin/apxs -libmodperl mod_perl-5.8.3-ithread.so -port select MOD_PERL=2 && make && make test && make install
+
+
+
+make clean && /usr/bin/env CCFLAGS="-g" perl-5.8.4-ithread Makefile.PL -apxs /home/stas/httpd/worker/bin/apxs -libmodperl mod_perl-5.8.4-ithread.so -port select MOD_PERL=2 && make && make test && make install
+
+
+
+make clean && /usr/bin/env CCFLAGS="-g" perl-5.8.5-ithread Makefile.PL -apxs /home/stas/httpd/worker/bin/apxs -libmodperl mod_perl-5.8.5-ithread.so -port select MOD_PERL=2 && make && make test && make install
+
+
+make clean && /usr/bin/env CCFLAGS="-g" perl-blead-ithread Makefile.PL -apxs /home/stas/httpd/worker/bin/apxs -libmodperl mod_perl-blead-ithread.so -port select MOD_PERL=2 && make && make test && make install
+
+
+
+#### mp1 static ###
+
+
+make clean && /usr/bin/env CCFLAGS="-g" perl-5.6.1 Makefile.PL -httpd /home/stas/httpd/1.3-static/bin/httpd-5.6.1 -port select MOD_PERL=1 && make && make test && make install
+
+
+
+make clean && /usr/bin/env CCFLAGS="-g" perl-5.6.1-ithread Makefile.PL -httpd /home/stas/httpd/1.3-static/bin/httpd-5.6.1-ithread -port select MOD_PERL=1 && make && make test && make install
+
+
+
+make clean && /usr/bin/env CCFLAGS="-g" perl-5.6.2 Makefile.PL -httpd /home/stas/httpd/1.3-static/bin/httpd-5.6.2 -port select MOD_PERL=1 && make && make test && make install
+
+make clean && /usr/bin/env CCFLAGS="-g" perl-5.6.2-ithread Makefile.PL -httpd /home/stas/httpd/1.3-static/bin/httpd-5.6.2-ithread -port select MOD_PERL=1 && make && make test && make install
+
+
+
+make clean && /usr/bin/env CCFLAGS="-g" perl-5.8.0 Makefile.PL -httpd /home/stas/httpd/1.3-static/bin/httpd-5.8.0 -port select MOD_PERL=1 && make && make test && make install
+
+make clean && /usr/bin/env CCFLAGS="-g" perl-5.8.0-ithread Makefile.PL -httpd /home/stas/httpd/1.3-static/bin/httpd-5.8.0-ithread -port select MOD_PERL=1 && make && make test && make install
+
+
+
+make clean && /usr/bin/env CCFLAGS="-g" perl-5.8.1 Makefile.PL -httpd /home/stas/httpd/1.3-static/bin/httpd-5.8.1 -port select MOD_PERL=1 && make && make test && make install
+
+make clean && /usr/bin/env CCFLAGS="-g" perl-5.8.1-ithread Makefile.PL -httpd /home/stas/httpd/1.3-static/bin/httpd-5.8.1-ithread -port select MOD_PERL=1 && make && make test && make install
+
+
+
+
+make clean && /usr/bin/env CCFLAGS="-g" perl-5.8.2 Makefile.PL -httpd /home/stas/httpd/1.3-static/bin/httpd-5.8.2 -port select MOD_PERL=1 && make && make test && make install
+
+make clean && /usr/bin/env CCFLAGS="-g" perl-5.8.2-ithread Makefile.PL -httpd /home/stas/httpd/1.3-static/bin/httpd-5.8.2-ithread -port select MOD_PERL=1 && make && make test && make install
+
+
+
+make clean && /usr/bin/env CCFLAGS="-g" perl-5.8.3 Makefile.PL -httpd /home/stas/httpd/1.3-static/bin/httpd-5.8.3 -port select MOD_PERL=1 && make && make test && make install
+
+make clean && /usr/bin/env CCFLAGS="-g" perl-5.8.3-ithread Makefile.PL -httpd /home/stas/httpd/1.3-static/bin/httpd-5.8.3-ithread -port select MOD_PERL=1 && make && make test && make install
+
+
+
+make clean && /usr/bin/env CCFLAGS="-g" perl-5.8.4 Makefile.PL -httpd /home/stas/httpd/1.3-static/bin/httpd-5.8.4 -port select MOD_PERL=1 && make && make test && make install
+
+make clean && /usr/bin/env CCFLAGS="-g" perl-5.8.4-ithread Makefile.PL -httpd /home/stas/httpd/1.3-static/bin/httpd-5.8.4-ithread -port select MOD_PERL=1 && make && make test && make install
+
+
+
+
+
+make clean && /usr/bin/env CCFLAGS="-g" perl-5.8.5 Makefile.PL -httpd /home/stas/httpd/1.3-static/bin/httpd-5.8.5 -port select MOD_PERL=1 && make && make test && make install
+
+make clean && /usr/bin/env CCFLAGS="-g" perl-5.8.5-ithread Makefile.PL -httpd /home/stas/httpd/1.3-static/bin/httpd-5.8.5-ithread -port select MOD_PERL=1 && make && make test && make install
+
+
+
+
+make clean && /usr/bin/env CCFLAGS="-g" perl-blead Makefile.PL -httpd /home/stas/httpd/1.3-static/bin/httpd-blead -port select MOD_PERL=1 && make && make test && make install
+
+make clean && /usr/bin/env CCFLAGS="-g" perl-blead-ithread Makefile.PL -httpd /home/stas/httpd/1.3-static/bin/httpd-blead-ithread -port select MOD_PERL=1 && make && make test && make install
+
+#### mp1 dynamic ###
+
+#-libmodperl mod_perl-5.8.1-ithread.so
+
+
+
+make clean && /usr/bin/env CCFLAGS="-g" perl-5.6.1 Makefile.PL -apxs /home/stas/httpd/1.3-dynamic/bin/apxs -libmodperl libperl-5.6.1.so -port select MOD_PERL=1 && make && make test && make install
+
+make clean && /usr/bin/env CCFLAGS="-g" perl-5.6.1-ithread Makefile.PL -apxs /home/stas/httpd/1.3-dynamic/bin/apxs -libmodperl libperl-5.6.1-ithread.so -port select MOD_PERL=1 && make && make test && make install
+
+
+
+make clean && /usr/bin/env CCFLAGS="-g" perl-5.6.2 Makefile.PL -apxs /home/stas/httpd/1.3-dynamic/bin/apxs -libmodperl libperl-5.6.2.so -port select MOD_PERL=1 && make && make test && make install
+
+make clean && /usr/bin/env CCFLAGS="-g" perl-5.6.2-perlio Makefile.PL -apxs /home/stas/httpd/1.3-dynamic/bin/apxs -libmodperl libperl-5.6.2-perlio.so -port select MOD_PERL=1 && make && make test && make install
+
+make clean && /usr/bin/env CCFLAGS="-g" perl-5.6.2-ithread Makefile.PL -apxs /home/stas/httpd/1.3-dynamic/bin/apxs -libmodperl libperl-5.6.2-ithread.so -port select MOD_PERL=1 && make && make test && make install
+
+
+
+
+make clean && /usr/bin/env CCFLAGS="-g" perl-5.8.0 Makefile.PL -apxs /home/stas/httpd/1.3-dynamic/bin/apxs -libmodperl libperl-5.8.0.so -port select MOD_PERL=1 && make && make test && make install
+
+make clean && /usr/bin/env CCFLAGS="-g" perl-5.8.0-ithread Makefile.PL -apxs /home/stas/httpd/1.3-dynamic/bin/apxs -libmodperl libperl-5.8.0-ithread.so -port select MOD_PERL=1 && make && make test && make install
+
+
+
+make clean && /usr/bin/env CCFLAGS="-g" perl-5.8.1 Makefile.PL -apxs /home/stas/httpd/1.3-dynamic/bin/apxs -libmodperl libperl-5.8.1.so -port select MOD_PERL=1 && make && make test && make install
+
+make clean && /usr/bin/env CCFLAGS="-g" perl-5.8.1-ithread Makefile.PL -apxs /home/stas/httpd/1.3-dynamic/bin/apxs -libmodperl libperl-5.8.1-ithread.so -port select MOD_PERL=1 && make && make test && make install
+
+
+
+make clean && /usr/bin/env CCFLAGS="-g" perl-5.8.2 Makefile.PL -apxs /home/stas/httpd/1.3-dynamic/bin/apxs -libmodperl libperl-5.8.2.so -port select MOD_PERL=1 && make && make test && make install
+
+make clean && /usr/bin/env CCFLAGS="-g" perl-5.8.2-ithread Makefile.PL -apxs /home/stas/httpd/1.3-dynamic/bin/apxs -libmodperl libperl-5.8.2-ithread.so -port select MOD_PERL=1 && make && make test && make install
+
+
+
+make clean && /usr/bin/env CCFLAGS="-g" perl-5.8.3 Makefile.PL -apxs /home/stas/httpd/1.3-dynamic/bin/apxs -libmodperl libperl-5.8.3.so -port select MOD_PERL=1 && make && make test && make install
+
+make clean && /usr/bin/env CCFLAGS="-g" perl-5.8.3-ithread Makefile.PL -apxs /home/stas/httpd/1.3-dynamic/bin/apxs -libmodperl libperl-5.8.3-ithread.so -port select MOD_PERL=1 && make && make test && make install
+
+
+
+make clean && /usr/bin/env CCFLAGS="-g" perl-5.8.4 Makefile.PL -apxs /home/stas/httpd/1.3-dynamic/bin/apxs -libmodperl libperl-5.8.4.so -port select MOD_PERL=1 && make && make test && make install
+
+make clean && /usr/bin/env CCFLAGS="-g" perl-5.8.4-ithread Makefile.PL -apxs /home/stas/httpd/1.3-dynamic/bin/apxs -libmodperl libperl-5.8.4-ithread.so -port select MOD_PERL=1 && make && make test && make install
+
+
+
+
+
+make clean && /usr/bin/env CCFLAGS="-g" perl-5.8.5 Makefile.PL -apxs /home/stas/httpd/1.3-dynamic/bin/apxs -libmodperl libperl-5.8.5.so -port select MOD_PERL=1 && make && make test && make install
+
+make clean && /usr/bin/env CCFLAGS="-g" perl-5.8.5-ithread Makefile.PL -apxs /home/stas/httpd/1.3-dynamic/bin/apxs -libmodperl libperl-5.8.5-ithread.so -port select MOD_PERL=1 && make && make test && make install
+
+
+
+make clean && /usr/bin/env CCFLAGS="-g" perl-blead Makefile.PL -apxs /home/stas/httpd/1.3-dynamic/bin/apxs -libmodperl libperl-blead.so -port select MOD_PERL=1 && make && make test && make install
+
+make clean && /usr/bin/env CCFLAGS="-g" perl-blead-ithread Makefile.PL -apxs /home/stas/httpd/1.3-dynamic/bin/apxs -libmodperl libperl-blead-ithread.so -port select MOD_PERL=1 && make && make test && make install
+
+
+
