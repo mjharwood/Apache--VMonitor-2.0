@@ -53,7 +53,6 @@ if ($mp_gen == 1) {
 
 }
 else {
-    require Apache2;
     require ModPerl::MM;
     ModPerl::MM::WriteMakefile(
         %common_opts,
@@ -154,7 +153,6 @@ sub satisfy_mp_generation {
     }
     elsif ($wanted == 2) {
         #warn "Looking for mod_perl 2.0";
-        require Apache2;
         require_mod_perl();
         if ($mod_perl::VERSION < 1.99) {
             die "You don't seem to have mod_perl 2.0 installed";
@@ -172,9 +170,9 @@ sub satisfy_mp_generation {
 
 sub require_mod_perl {
     eval { require mod_perl };
+    eval { require mod_perl2 }  if ($@);
     die "Can't find mod_perl installed\nThe error was: $@" if $@;
 }
-
 
 # the function looks at %ENV and Makefile.PL option to figure out
 # whether a specific mod_perl generation was requested.
@@ -224,8 +222,15 @@ EOF
     unless ($wanted) {
         # if still unknown try to require mod_perl.pm
         eval { require mod_perl };
-        unless ($@) {
-            $wanted = $mod_perl::VERSION >= 1.99 ? 2 : 1;
+        if ($@) {
+            # if we don't have mp2, check for mp2
+            eval { require mod_perl2 } if ($@);
+            unless ($@) {
+                $wanted = 2;
+            }
+        }
+        else {
+            $wanted = 1;
         }
     }
 
