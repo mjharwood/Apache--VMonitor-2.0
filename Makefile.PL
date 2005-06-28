@@ -26,7 +26,7 @@ my %require_mp1 =  (
 my %require_mp2 =  (
    "GTop"               => "0.12",
    "mod_perl"           => "1.9915",
-   "Apache::Scoreboard" => "2.06",
+   "Apache::Scoreboard" => "2.08",
 );
 
 my %require = (%require_common, ($mp_gen == 1 ? %require_mp1 : %require_mp2));
