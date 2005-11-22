@@ -11,7 +11,8 @@ use Template ();
 use GTop ();
 
 BEGIN {
-    use constant MP2 => eval { require mod_perl; $mod_perl::VERSION > 1.99 };
+    use constant MP2 => eval { require mod_perl2; $mod_perl2::VERSION > 1.99 };
+    eval {require mod_perl} unless MP2;
     die "mod_perl is required to run this module: $@" if $@;
 
     if (MP2) {
