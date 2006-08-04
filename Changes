@@ -2,11 +2,14 @@
 
 =over 
 
-=item 2.04 - dev
+=item 2.06  - Fri Aug 4 2006
 
-Update to match the API changes in MP2 RC5 and above
+mod_perl2 API change support
+documentation improvements
 
+=item 2.05 
 
+mod_perl2 API change support
 
 =item 2.03 - Fri Mar 18 15:26:11 EST 2005
 

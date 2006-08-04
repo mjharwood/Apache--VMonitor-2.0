@@ -25,7 +25,7 @@ my %require_mp1 =  (
 
 my %require_mp2 =  (
    "GTop"               => "0.12",
-   "mod_perl"           => "1.9915",
+   "mod_perl2"          => "2.0",
    "Apache::Scoreboard" => "2.08",
 );
 
@@ -154,7 +154,7 @@ sub satisfy_mp_generation {
     elsif ($wanted == 2) {
         #warn "Looking for mod_perl 2.0";
         require_mod_perl();
-        if ($mod_perl::VERSION < 1.99) {
+        if ($mod_perl::VERSION < 2.0) {
             die "You don't seem to have mod_perl 2.0 installed";
         }
         $selected = 2;
