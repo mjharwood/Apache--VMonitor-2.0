@@ -2,6 +2,21 @@
 
 =over 
 
+=item 2.07  - Mon May 28 2012
+
+removed dependency on apache_scoreboard being available during compilation
+(was causing loading errors in Apache:VMonitor was loading in httpd.conf
+sections and/or PostConfigRequire)
+
+made dependency on GTop optional
+
+look for httpd in some standard places so you don't need to pass it on
+the make command line (if you have a standard or distribution install
+and this doesn't work, let me know where you have apache installed and
+I'll add it).
+
+documentation improvements
+
 =item 2.06  - Fri Aug 4 2006
 
 mod_perl2 API change support

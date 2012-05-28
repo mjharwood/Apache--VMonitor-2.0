@@ -99,6 +99,26 @@ sub test_configure {
         Apache::TestMM->import(qw(test clean));
         my @scripts = qw(t/TEST);
         # accept the configs from command line
+
+        # check for http in common locations
+        unless (grep $_ eq "httpd", @ARGV)
+        {
+            my @common = ('/sbin/', '/usr/sbin/', '/usr/bin/', '/bin', '/usr/local/sbin', '/usr/local/bin', '/opt/apache', '/opt/apache2' );
+            foreach my $dir (@common)
+            {
+                if ( -e $dir . "httpd")
+                {
+                    push @ARGV, ( 'httpd', $dir . "httpd" );
+                    last;
+                }
+                if ( -e $dir . "httpd2")
+                {
+                    push @ARGV, ( 'httpd', $dir . "httpd2" );
+                    last;
+                }
+            }
+        }
+
         Apache::TestMM::filter_args();
 
         Apache::TestMM::generate_script($_) for @scripts;
@@ -137,8 +157,8 @@ sub satisfy_mp_generation {
     my $wanted = shift || wanted_mp_generation();
 
     unless ($wanted == 1 || $wanted == 2) {
-        die "don't know anything about mod_perl generation: $wanted\n" .
-            "currently supporting only generations 1 and 2";
+            die "Could not find mod_perl.pm or mod_perl2.pm, please make sure you have mod_perl installed.
+                 You need mod_perl for Apache 1.x and mod_perl2 for Apache 2.x";
     }
 
     my $selected = 0;

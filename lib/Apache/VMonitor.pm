@@ -8,7 +8,6 @@ use strict;
 use warnings;
 
 use Template ();
-use GTop ();
 
 BEGIN {
     use constant MP2 => eval { require mod_perl2; $mod_perl2::VERSION >= 2.0 };
@@ -40,10 +39,6 @@ use constant APACHE_IS_THREADED => MP2 &&
 # starting from version 0.12
 use constant HAS_VHOSTS => (MP2 || $Apache::Scoreboard::VERSION > 0.11);
 
-use constant SERVER_LIMIT => MP2
-    ? Apache::Scoreboard->image(APR::Pool->new)->server_limit
-    : Apache::Constants::HARD_SERVER_LIMIT;
-
 #use constant THREAD_LIMIT => MP2
 #    ? Apache::Const::THREAD_LIMIT
 #    : 0; # no threads in mp1
@@ -52,7 +47,12 @@ use constant SINGLE_PROCESS_MODE => MP2
     ? Apache2::ServerUtil::exists_config_define('ONE_PROCESS')
     : Apache->define('X');
 
-my $gtop = GTop->new;
+my $gtop;
+
+eval {
+    require GTop;
+    $gtop = GTop->new;
+};
 
 my $tt;
 
@@ -373,6 +373,11 @@ sub data_system {
         year  => $year + 1900,
     );
 
+    unless ($gtop)
+    {
+        return { date    => \%date, };
+    }
+
     my $loadavg = $gtop->loadavg;
 
     my $data = {
@@ -570,10 +575,12 @@ sub data_apache {
         }
     }
 
+    my $SERVER_LIMIT = MP2 ? $image->server_limit : $Apache::Constants::HARD_SERVER_LIMIT;
+
     my $i;
     my $parent_count = 0;
     my ($parent_score, $worker_score, $pid);
-    for ($i=0; $i < SERVER_LIMIT; $i++) {
+    for ($i=0; $i < $SERVER_LIMIT; $i++) {
         last if SINGLE_PROCESS_MODE && $i > 0;
 
         $parent_score = MP2 ? $image->parent_score($i) : $image->servers($i);
@@ -746,6 +753,8 @@ sub data_apache {
 
 sub pid2mem {
     my($self, $pid, $total) = @_;
+
+    return {} unless $gtop;
 
     my $proc_mem = $gtop->proc_mem($pid);
     my $size  = $proc_mem ? $proc_mem->size($pid) : 0;
@@ -948,6 +957,13 @@ sub data_procs {
     }
 
     my $gtop = $self->{gtop};
+
+    unless ($gtop) {
+        warn "GTop not installed, not displaying process data";
+        return {};
+    }
+
+
     my($proclist, $entries) = $gtop->proclist;
 
     my %procs = ();
@@ -1224,7 +1240,7 @@ sub pid2parent_score {
         # XXX: mp1 untested
         my $i;
         my $is_httpd_child = 0;
-        for ($i = 0; $i < SERVER_LIMIT; $i++) {
+        for ($i = 0; $i < $Apache::Constants::HARD_SERVER_LIMIT; $i++) {
             $is_httpd_child = 1, last if $pid == $image->parent($i)->pid;
         }
         $i = -1 if $pid == getppid();
