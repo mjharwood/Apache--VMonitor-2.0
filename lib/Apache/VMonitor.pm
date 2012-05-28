@@ -1,6 +1,6 @@
 package Apache::VMonitor;
 
-$Apache::VMonitor::VERSION = '2.06';
+$Apache::VMonitor::VERSION = '2.07';
 
 require 5.006;
 
@@ -2133,11 +2133,6 @@ You can control the behavior of this module by configuring the
 following variables in the startup file or inside the
 C<E<lt>PerlE<gt>> section. 
 
-B<NOTE> For Apache versions 2.0.54, 2.0.55,
-2.0.58, and possibly later C<E<lt>PerlE<gt>> sections and PostConfigRequire
-files do not work due to when Apache initialises the scoreboard object.
-
-
 Module loading:
 
   use Apache::VMonitor();
@@ -2197,7 +2192,9 @@ Notice that turning the C<ExtendedStatus> mode I<On> is not
 recommended for high-performance production sites, as it adds an
 overhead to the request response times.
 
-You also need B<Time::HiRes> and B<GTop> to be installed.
+You also need B<Time::HiRes> to be installed
+
+If you want process status information, you need B<GTop> to be installed.
 
 And of course you need a running mod_perl enabled apache server.
 
@@ -2225,6 +2222,7 @@ L<Apache>, L<mod_perl>, L<Apache::Scoreboard>, L<GTop>
 =head1 AUTHORS
 
 Stas Bekman <stas@stason.org>
+Malcolm J Harwood <mjh-vmonitor@liminalflux.net>
 
 =head1 COPYRIGHT
 
